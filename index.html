@@ -453,7 +453,19 @@
             create3DModel(modelConfig) {
                 if (modelConfig.type === 'glb') {
                     console.log('Creating GLB model:', modelConfig);
-                    // Return placeholder for GLB models (will be loaded async)
+                    const path = modelConfig.path;
+
+                    // If already in cache, return cloned model immediately
+                    if (this.modelCache[path]) {
+                        console.log('GLB model found in cache, cloning:', path);
+                        const clonedModel = this.cloneGLTF(this.modelCache[path]);
+                        if (modelConfig.scale) {
+                            clonedModel.scale.set(modelConfig.scale, modelConfig.scale, modelConfig.scale);
+                        }
+                        return clonedModel;
+                    }
+
+                    // Otherwise create placeholder and load async
                     const placeholder = new THREE.Group();
                     placeholder.userData.isPlaceholder = true;
                     this.loadGLBModel(modelConfig, placeholder);
@@ -494,14 +506,6 @@
 
                 if (!this.gltfLoader) {
                     console.error('GLTFLoader not available!');
-                    return;
-                }
-
-                // Check cache
-                if (this.modelCache[path]) {
-                    console.log('Model found in cache:', path);
-                    const clonedModel = this.cloneGLTF(this.modelCache[path]);
-                    this.replaceWithLoadedModel(placeholder, clonedModel, modelConfig);
                     return;
                 }
 
