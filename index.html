@@ -297,7 +297,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
     <script>
@@ -307,7 +307,7 @@
             'sphere': { type: 'sphere', color: 0xff0000, size: 0.08 },
             'pyramid': { type: 'pyramid', color: 0x0000ff, size: 0.1 },
             'torus': { type: 'torus', color: 0xffff00, size: 0.08 },
-            'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.05, color: 0xff0000 }
+            'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.2, color: 0xff0000 }
         };
 
         class ARQRViewer {
@@ -338,7 +338,12 @@
                 this.smoothing = 0.4;
 
                 // GLTF Loader and cache
-                this.gltfLoader = new THREE.GLTFLoader();
+                if (THREE.GLTFLoader) {
+                    this.gltfLoader = new THREE.GLTFLoader();
+                    console.log('GLTFLoader initialized successfully');
+                } else {
+                    console.error('GLTFLoader not found! Check if GLTFLoader.js is loaded');
+                }
                 this.modelCache = {};
                 this.loadingModels = {};
 
@@ -395,13 +400,17 @@
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setPixelRatio(window.devicePixelRatio);
 
-                // Lights
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                // Lights - stronger for GLB models
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
                 this.scene.add(ambientLight);
 
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(1, 1, 1);
-                this.scene.add(directionalLight);
+                const directionalLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+                directionalLight1.position.set(1, 1, 1);
+                this.scene.add(directionalLight1);
+
+                const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+                directionalLight2.position.set(-1, -1, -1);
+                this.scene.add(directionalLight2);
 
                 // Window resize handler
                 window.addEventListener('resize', () => {
@@ -416,6 +425,7 @@
 
             create3DModel(modelConfig) {
                 if (modelConfig.type === 'glb') {
+                    console.log('Creating GLB model:', modelConfig);
                     // Return placeholder for GLB models (will be loaded async)
                     const placeholder = new THREE.Group();
                     placeholder.userData.isPlaceholder = true;
@@ -453,9 +463,16 @@
 
             async loadGLBModel(modelConfig, placeholder) {
                 const path = modelConfig.path;
+                console.log('loadGLBModel called with path:', path);
+
+                if (!this.gltfLoader) {
+                    console.error('GLTFLoader not available!');
+                    return;
+                }
 
                 // Check cache
                 if (this.modelCache[path]) {
+                    console.log('Model found in cache:', path);
                     const clonedModel = this.modelCache[path].clone();
                     this.replaceWithLoadedModel(placeholder, clonedModel, modelConfig);
                     return;
@@ -463,19 +480,24 @@
 
                 // Check if already loading
                 if (this.loadingModels[path]) {
+                    console.log('Model already loading, adding to queue:', path);
                     this.loadingModels[path].push({ placeholder, modelConfig });
                     return;
                 }
 
                 // Start loading
+                console.log('Starting to load model:', path);
                 this.loadingModels[path] = [{ placeholder, modelConfig }];
 
                 try {
                     this.gltfLoader.load(
                         path,
                         (gltf) => {
+                            console.log('GLB loaded successfully:', path, gltf);
                             const loadedModel = gltf.scene;
                             this.modelCache[path] = loadedModel;
+
+                            console.log('Model children:', loadedModel.children);
 
                             // Replace all waiting placeholders
                             for (const waiting of this.loadingModels[path]) {
@@ -486,22 +508,33 @@
                             delete this.loadingModels[path];
                         },
                         (xhr) => {
-                            const percent = (xhr.loaded / xhr.total) * 100;
-                            console.log(`Loading ${path}: ${percent.toFixed(0)}%`);
+                            if (xhr.total > 0) {
+                                const percent = (xhr.loaded / xhr.total) * 100;
+                                console.log(`Loading ${path}: ${percent.toFixed(0)}%`);
+                            }
                         },
                         (error) => {
-                            console.error('Error loading GLB model:', error);
+                            console.error('Error loading GLB model:', path, error);
                             delete this.loadingModels[path];
                         }
                     );
                 } catch (error) {
-                    console.error('Error loading GLB model:', error);
+                    console.error('Exception loading GLB model:', path, error);
                     delete this.loadingModels[path];
                 }
             }
 
             replaceWithLoadedModel(placeholder, loadedModel, modelConfig) {
-                if (!placeholder.parent) return;
+                console.log('replaceWithLoadedModel called', {
+                    hasParent: !!placeholder.parent,
+                    scale: modelConfig.scale,
+                    isCurrentModel: this.model === placeholder
+                });
+
+                if (!placeholder.parent) {
+                    console.warn('Placeholder has no parent, cannot replace');
+                    return;
+                }
 
                 // Apply scale
                 if (modelConfig.scale) {
@@ -512,13 +545,19 @@
                 loadedModel.position.copy(placeholder.position);
                 loadedModel.rotation.copy(placeholder.rotation);
 
+                console.log('Model position:', loadedModel.position);
+                console.log('Model scale:', loadedModel.scale);
+
                 // Replace in scene
                 placeholder.parent.add(loadedModel);
                 placeholder.parent.remove(placeholder);
 
+                console.log('Model added to scene, placeholder removed');
+
                 // Update reference if this is current model
                 if (this.model === placeholder) {
                     this.model = loadedModel;
+                    console.log('Updated current model reference');
                 }
             }
 
