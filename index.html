@@ -244,7 +244,7 @@
     const LOST_TIMEOUT_S = 2.5;
 
     // Model sizing and interaction parameters.
-    const MODEL_FIT_RATIO = 0.65;
+    const MODEL_FIT_RATIO = 0.55;
     const MODEL_MIN_SCALE = 0.4;
     const MODEL_MAX_SCALE = 2.5;
 
@@ -294,7 +294,6 @@
     const scratchBox = new THREE.Box3();
     const scratchCenter = new THREE.Vector3();
     const scratchSize = new THREE.Vector3();
-    const scratchMin = new THREE.Vector3();
 
     let activePayload = null;
     let lastSeenAt = 0;
@@ -360,15 +359,23 @@
         const targetSize = QR_SIZE_M * MODEL_FIT_RATIO;
         const scaleFactor = targetSize / maxDimension;
         root.scale.multiplyScalar(scaleFactor);
+        logDebug(`Scale factor applied: ${scaleFactor.toFixed(3)}`);
       }
 
       root.updateMatrixWorld(true);
       scratchBox.setFromObject(root);
       scratchBox.getCenter(scratchCenter);
-      scratchMin.copy(scratchBox.min);
+      logDebug(`Model center after fit: (${scratchCenter.x.toFixed(3)}, ${scratchCenter.y.toFixed(3)}, ${scratchCenter.z.toFixed(3)})`);
 
-      root.position.set(-scratchCenter.x, -scratchMin.y, -scratchCenter.z);
+      root.position.sub(scratchCenter);
       root.updateMatrixWorld(true);
+
+      root.traverse((child) => {
+        if (child.isObject3D) {
+          child.matrixAutoUpdate = true;
+          child.frustumCulled = false;
+        }
+      });
     }
 
     function waitForOpenCvReady() {
