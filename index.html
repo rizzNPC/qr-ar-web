@@ -203,7 +203,6 @@
   <script type="module">
     import * as THREE from "three";
     import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-    import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 
     const OPENCV_CDN_URLS = [
       "https://docs.opencv.org/4.x/opencv.js",
@@ -331,12 +330,10 @@
     scene.add(directional);
 
     const anchorGroup = new THREE.Group();
-    anchorGroup.matrixAutoUpdate = false;
     anchorGroup.visible = false;
     scene.add(anchorGroup);
 
     const userRotationGroup = new THREE.Group();
-    userRotationGroup.matrixAutoUpdate = true;
     anchorGroup.add(userRotationGroup);
 
     const loader = new GLTFLoader();
@@ -412,45 +409,6 @@
       }
       const now = new Date().toLocaleTimeString();
       debugLogEl.textContent = `${now}: ${message}\n${debugLogEl.textContent}`.slice(0, 1200);
-    }
-
-    function prepareModelForAnchor(root) {
-      if (!root) {
-        return;
-      }
-
-      root.position.set(0, 0, 0);
-      root.rotation.set(0, 0, 0);
-      root.scale.set(1, 1, 1);
-      root.matrixAutoUpdate = true;
-      root.updateMatrixWorld(true);
-
-      scratchBox.setFromObject(root);
-      scratchBox.getSize(scratchSize);
-      const maxDimension = Math.max(scratchSize.x || 0, scratchSize.y || 0, scratchSize.z || 0);
-
-      if (maxDimension > 0) {
-        const targetSize = QR_SIZE_M * MODEL_FIT_RATIO;
-        const scaleFactor = targetSize / maxDimension;
-        root.scale.multiplyScalar(scaleFactor);
-        logDebug(`Scale factor applied: ${scaleFactor.toFixed(3)}`);
-      }
-
-      root.updateMatrixWorld(true);
-      scratchBox.setFromObject(root);
-      scratchBox.getCenter(scratchCenter);
-      scratchMin.copy(scratchBox.min);
-      logDebug(`Model center after fit: (${scratchCenter.x.toFixed(3)}, ${scratchCenter.y.toFixed(3)}, ${scratchCenter.z.toFixed(3)})`);
-
-      root.position.set(-scratchCenter.x, -scratchMin.y, -scratchCenter.z);
-      root.updateMatrixWorld(true);
-
-      root.traverse((child) => {
-        if (child.isObject3D) {
-          child.matrixAutoUpdate = true;
-          child.frustumCulled = false;
-        }
-      });
     }
 
     function waitForOpenCvReady() {
@@ -653,7 +611,11 @@
         return null;
       }
 
-      if (!modelCache.has(payload) && !modelPromiseCache.has(payload)) {
+      if (modelCache.has(payload)) {
+        return modelCache.get(payload).clone(true);
+      }
+
+      if (!modelPromiseCache.has(payload)) {
         setStatus("loading", payload);
         logDebug(`Loading model for ${payload}`);
         const url = QR_TO_MODEL[payload];
@@ -663,10 +625,6 @@
             if (child.isMesh || child.isSkinnedMesh) {
               child.castShadow = false;
               child.receiveShadow = false;
-              child.frustumCulled = false;
-              if (child.geometry && !child.geometry.boundingBox) {
-                child.geometry.computeBoundingBox();
-              }
             }
           });
           modelCache.set(payload, sceneRoot);
@@ -677,19 +635,11 @@
         modelPromiseCache.set(payload, promise);
       }
 
-      if (modelPromiseCache.has(payload)) {
-        await modelPromiseCache.get(payload);
-      }
-
-      const cached = modelCache.get(payload);
+      const cached = await modelPromiseCache.get(payload);
       if (!cached) {
         return null;
       }
-
-      const instance = SkeletonUtils.clone(cached);
-      prepareModelForAnchor(instance);
-      logDebug(`Prepared model for payload ${payload}`);
-      return instance;
+      return cached.clone(true);
     }
 
     function detachModel() {
@@ -756,10 +706,7 @@
         pose.tvec.delete();
 
         anchorGroup.matrix.copy(matrix);
-        anchorGroup.matrixWorld.copy(matrix);
-        anchorGroup.matrixWorldNeedsUpdate = false;
-        anchorGroup.updateMatrixWorld(true);
-        userRotationGroup.updateMatrixWorld(true);
+        anchorGroup.matrix.decompose(anchorGroup.position, anchorGroup.quaternion, anchorGroup.scale);
         anchorGroup.visible = true;
 
         const worldPos = new THREE.Vector3();
