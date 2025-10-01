@@ -1,1037 +1,695 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Mind AR QR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <style>
-    :root {
-      color-scheme: dark;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR QR Viewer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    * {
-      box-sizing: border-box;
-    }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-    body {
-      margin: 0;
-      background: #000;
-      color: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      overflow: hidden;
-    }
+        body {
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0f;
+            color: #ffffff;
+        }
 
-    #camera,
-    #three-canvas,
-    #overlay {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: contain;
-      background: #000;
-      display: block;
-    }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+        }
 
-    #camera {
-      z-index: 0;
-    }
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: brightness(0.95) contrast(1.05);
+        }
 
-    #three-canvas {
-      z-index: 1;
-    }
+        #canvas3d {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
 
-    #overlay {
-      pointer-events: none;
-      display: none; /* Flip to block for debugging corner detection */
-    }
+        #scanCanvas {
+            display: none;
+        }
 
-    #hud {
-      position: fixed;
-      left: 16px;
-      bottom: 16px;
-      padding: 12px 16px;
-      background: rgba(0, 0, 0, 0.6);
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 14px;
-      line-height: 1.4;
-      max-width: 70vw;
-      backdrop-filter: blur(6px);
-      z-index: 3;
-    }
+        /* Glassmorphism panel */
+        .glass-panel {
+            background: rgba(15, 15, 25, 0.5);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
 
-    #hud strong {
-      display: block;
-      font-size: 16px;
-      margin-bottom: 4px;
-    }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 16px 24px;
+            border-radius: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 10;
+            background: rgba(15, 15, 25, 0.6);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            color: #ffffff;
+            letter-spacing: 0.3px;
+            transition: all 0.3s ease;
+            animation: slideInLeft 0.5s ease-out;
+        }
 
-    #hud small {
-      opacity: 0.7;
-      display: block;
-      margin-top: 4px;
-      font-size: 12px;
-    }
+        #info::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 16px;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(147, 51, 234, 0.3), rgba(59, 130, 246, 0.3));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
 
-    #permission-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.85);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 32px;
-      gap: 16px;
-      text-align: center;
-      z-index: 5;
-    }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 32px 48px;
+            border-radius: 24px;
+            z-index: 20;
+            background: rgba(15, 15, 25, 0.8);
+            backdrop-filter: blur(30px) saturate(180%);
+            -webkit-backdrop-filter: blur(30px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 16px 64px 0 rgba(0, 0, 0, 0.6);
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-align: center;
+            animation: pulse 2s ease-in-out infinite;
+        }
 
-    #permission-overlay.hidden {
-      display: none;
-    }
+        #loading::after {
+            content: '';
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 3px;
+            background: linear-gradient(90deg, #9333ea, #3b82f6, #06b6d4);
+            border-radius: 2px;
+            animation: loading 1.5s ease-in-out infinite;
+        }
 
-    #permission-overlay button {
-      font-size: 16px;
-      padding: 12px 28px;
-      border-radius: 999px;
-      border: none;
-      background: #5a6df2;
-      color: #fff;
-      font-weight: 600;
-      letter-spacing: 0.02em;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
+        /* Status indicator */
+        #info::after {
+            content: '';
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+            animation: blink 2s ease-in-out infinite;
+        }
 
-    #permission-overlay button:active {
-      transform: scale(0.98);
-    }
+        /* Legend panel */
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            padding: 20px;
+            border-radius: 16px;
+            background: rgba(15, 15, 25, 0.6);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            font-size: 13px;
+            animation: slideInUp 0.5s ease-out;
+        }
 
-    #debug-log {
-      position: fixed;
-      top: 12px;
-      right: 12px;
-      padding: 8px 12px;
-      font-size: 11px;
-      background: rgba(0, 0, 0, 0.6);
-      border-radius: 8px;
-      max-width: 40vw;
-      white-space: pre-line;
-      display: block; /* Enable for verbose diagnostics */
-      z-index: 4;
-    }
+        #legend h3 {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            color: rgba(255, 255, 255, 0.6);
+        }
 
-    #debug-controls {
-      position: fixed;
-      right: 12px;
-      bottom: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      padding: 12px 16px;
-      background: rgba(0, 0, 0, 0.65);
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 13px;
-      color: #fff;
-      z-index: 4;
-      width: min(240px, 90vw);
-    }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
 
-    #debug-controls.hidden-control {
-      display: none;
-    }
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
 
-    #debug-controls label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
 
-    #debug-controls input[type="range"] {
-      width: 100%;
-    }
+        /* Animations */
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
 
-    /* Instructions for maintainers:
-       1) Place .glb or .gltf files under assets/models/ (already created).
-       2) Update the QR_TO_MODEL mapping inside the script below to point from QR payload text to model URLs.
-       3) Adjust QR_SIZE_M (in meters) to match the physical QR code edge length you print. Example: 5 cm QR => 0.05.
-       4) Deploy by committing the project and pushing to a GitHub repository with Pages enabled (root branch).
-    */
-  </style>
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.8;
+            }
+        }
+
+        @keyframes loading {
+            0% {
+                transform: translateX(-50%) scaleX(0);
+            }
+            50% {
+                transform: translateX(-50%) scaleX(1);
+            }
+            100% {
+                transform: translateX(-50%) scaleX(0);
+            }
+        }
+
+        @keyframes blink {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            #info {
+                top: 12px;
+                left: 12px;
+                padding: 12px 18px;
+                font-size: 12px;
+            }
+
+            #legend {
+                bottom: 12px;
+                left: 12px;
+                padding: 16px;
+                font-size: 11px;
+            }
+
+            #loading {
+                padding: 24px 36px;
+                font-size: 14px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <video id="camera" playsinline muted></video>
-  <canvas id="overlay"></canvas>
-  <div id="hud">
-    <strong>Наведите камеру на QR</strong>
-    <span id="hud-sub">Готово к сканированию</span>
-    <small>Слайд для вращения модели</small>
-  </div>
-  <div id="debug-controls" class="hidden-control">
-    <label>
-      Масштаб: <span id="debug-scale-value">1.00</span>
-      <input type="range" id="debug-scale" min="0.1" max="2.5" value="1" step="0.01" />
-    </label>
-    <label>
-      Высота (Y): <span id="debug-height-value">0.00</span>
-      <input type="range" id="debug-height" min="-0.5" max="0.5" value="0" step="0.005" />
-    </label>
-    <label>
-      Видимость линии <input type="checkbox" id="debug-show-line" checked />
-    </label>
-  </div>
-  <div id="permission-overlay">
-    <h1>Mind AR QR</h1>
-    <p>Нажмите, чтобы разрешить доступ к камере и запустить AR опыт.</p>
-    <button type="button" id="start-button">Запустить AR</button>
-    <p id="permission-error" style="display:none; color:#ff8a80; font-size:13px;"></p>
-  </div>
-  <div id="debug-log"></div>
+    <div id="container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas3d"></canvas>
+        <canvas id="scanCanvas"></canvas>
+        <div id="info">Scanning for QR codes...</div>
+        <div id="loading">Starting camera...</div>
+        <div id="legend">
+            <h3>Available Models</h3>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #00ff00;"></div>
+                <span>cube</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff0000;"></div>
+                <span>sphere</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #0000ff;"></div>
+                <span>pyramid</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffff00;"></div>
+                <span>torus</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: linear-gradient(135deg, #ff0000, #8b0000);"></div>
+                <span>ferrari</span>
+            </div>
+        </div>
+    </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-      }
-    }
-  </script>
-  <script type="module">
-    import * as THREE from "three";
-    import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
-    const OPENCV_CDN_URLS = [
-      "https://docs.opencv.org/4.x/opencv.js",
-      "https://rawcdn.githack.com/opencv/opencv/4.9.0/samples/js/opencv.js",
-      "https://fastly.jsdelivr.net/npm/@techstark/opencv-js@4.9.0/opencv.js",
-      "https://fastly.jsdelivr.net/npm/@techstark/opencv-js@4.9.0/opencv.min.js",
-      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@latest/opencv.js"
-    ];
-
-    let opencvScriptPromise = null;
-
-    function loadOpenCvScript() {
-      if (typeof window.cv !== "undefined") {
-        return Promise.resolve();
-      }
-
-      if (!opencvScriptPromise) {
-        opencvScriptPromise = (async () => {
-          let lastError = null;
-          for (const url of OPENCV_CDN_URLS) {
-            try {
-              await new Promise((resolve, reject) => {
-                const baseUrl = url.slice(0, url.lastIndexOf("/") + 1);
-                const moduleConfig = window.Module || {};
-                const priorLocateFile = moduleConfig.locateFile;
-                moduleConfig.locateFile = (path, prefix) => {
-                  if (typeof priorLocateFile === "function") {
-                    try {
-                      return priorLocateFile(path, prefix);
-                    } catch (_error) {
-                      // fallback to baseUrl path
-                    }
-                  }
-                  return baseUrl + path;
-                };
-                window.Module = moduleConfig;
-
-                const script = document.createElement("script");
-                script.src = url;
-                script.async = true;
-                script.onload = () => resolve();
-                script.onerror = () => {
-                  script.remove();
-                  if (window.Module === moduleConfig) {
-                    if (priorLocateFile) {
-                      moduleConfig.locateFile = priorLocateFile;
-                    } else {
-                      delete moduleConfig.locateFile;
-                    }
-                  }
-                  reject(new Error(`Не удалось загрузить ${url}`));
-                };
-                document.head.appendChild(script);
-              });
-              logDebug(`OpenCV.js загружен из ${url}`);
-              return;
-            } catch (error) {
-              lastError = error;
-              logDebug(error.message);
-            }
-          }
-          throw lastError || new Error("OpenCV.js CDN недоступен");
-        })();
-      }
-
-      return opencvScriptPromise.catch((error) => {
-        opencvScriptPromise = null;
-        throw error;
-      });
-    }
-
-    // Mapping QR payload text -> GLB model URL relative to site root.
-    const QR_TO_MODEL = {
-      "test": "TEST_CUBE", // Special keyword for test cube
-      "cesiumman": "assets/models/CesiumMan.glb",
-      "https://example.com/product/42": "assets/models/product42.glb"
-    };
-
-    // Physical edge length of the printed QR code in meters.
-    const QR_SIZE_M = 0.05;
-
-    // Seconds to wait after last sighting before hiding the model.
-    const LOST_TIMEOUT_S = 2.5;
-
-    // Model sizing and interaction parameters.
-    const MODEL_FIT_RATIO = 3;
-    const MODEL_MIN_SCALE = 0.4;
-    const MODEL_MAX_SCALE = 5;
-
-    const videoEl = document.getElementById("camera");
-    const overlayCanvas = document.getElementById("overlay");
-    const overlayCtx = overlayCanvas.getContext("2d", { willReadFrequently: true });
-    const hudEl = document.getElementById("hud");
-    const hudSubEl = document.getElementById("hud-sub");
-    const permissionOverlay = document.getElementById("permission-overlay");
-    const permissionErrorEl = document.getElementById("permission-error");
-    const startButton = document.getElementById("start-button");
-    const debugLogEl = document.getElementById("debug-log");
-    const debugControlsEl = document.getElementById("debug-controls");
-    const debugScaleInput = document.getElementById("debug-scale");
-    const debugScaleValueEl = document.getElementById("debug-scale-value");
-    const debugHeightInput = document.getElementById("debug-height");
-    const debugHeightValueEl = document.getElementById("debug-height-value");
-    const debugShowLineInput = document.getElementById("debug-show-line");
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x000000, 0);
-    renderer.domElement.id = "three-canvas";
-    renderer.domElement.style.position = "fixed";
-    renderer.domElement.style.inset = "0";
-    renderer.domElement.style.width = "100vw";
-    renderer.domElement.style.height = "100vh";
-    renderer.domElement.style.touchAction = "none";
-    renderer.domElement.style.backgroundColor = "transparent";
-    document.body.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100);
-    camera.matrixAutoUpdate = false;
-
-    const ambient = new THREE.HemisphereLight(0xffffff, 0x222233, 1.1);
-    scene.add(ambient);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.9);
-    directional.position.set(0.5, 1, 0.5);
-    scene.add(directional);
-
-    const anchorGroup = new THREE.Group();
-    anchorGroup.visible = false;
-    scene.add(anchorGroup);
-
-    const userRotationGroup = new THREE.Group();
-    anchorGroup.add(userRotationGroup);
-
-    const loader = new GLTFLoader();
-    const modelCache = new Map();
-    const modelPromiseCache = new Map();
-    const scratchBox = new THREE.Box3();
-    const scratchCenter = new THREE.Vector3();
-    const scratchSize = new THREE.Vector3();
-    const scratchMin = new THREE.Vector3();
-    const debugLineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffcc });
-    const debugLineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 1, 0)
-    ]);
-    const debugLine = new THREE.Line(debugLineGeometry, debugLineMaterial);
-    debugLine.visible = false;
-    userRotationGroup.add(debugLine);
-
-    let activePayload = null;
-    let lastSeenAt = 0;
-    let isProcessingFrame = false;
-    let stream = null;
-    let hasLoggedVideoWait = false;
-    let lastNoQrLogAt = 0;
-    let currentModel = null;
-    const activePointers = new Map();
-    const pointerTracking = {
-      primaryId: null,
-      startX: 0,
-      startRotY: 0,
-      pinchStartDistance: null,
-      pinchStartScale: 1
-    };
-    const userAdjustments = {
-      scale: 1,
-      heightOffset: 0
-    };
-
-    const Status = {
-      idle: (payload) => ({ title: "Наведите камеру на QR", detail: payload || "Готово к сканированию" }),
-      scanning: (payload) => ({ title: "QR обнаружен", detail: payload }),
-      loading: (payload) => ({ title: "Модель загружается", detail: payload }),
-      ready: (payload) => ({ title: "Модель загружена", detail: payload }),
-      unknown: (payload) => ({ title: "Неизвестный QR", detail: payload || "Добавьте QR в мэппинг" }),
-      error: (payload) => ({ title: "Ошибка", detail: payload })
-    };
-
-    const statusState = { kind: null, detail: null };
-
-    function setStatus(kind, payload) {
-      const statusFactory = Status[kind] || Status.idle;
-      const status = statusFactory(payload);
-      const signature = `${kind}|${status.detail}`;
-      if (statusState.kind === kind && statusState.detail === status.detail) {
-        return;
-      }
-      statusState.kind = kind;
-      statusState.detail = status.detail;
-      hudEl.querySelector("strong").textContent = status.title;
-      hudSubEl.textContent = status.detail;
-    }
-
-    function logDebug(message) {
-      try {
-        console.log(message);
-      } catch (_error) {
-        /* no-op */
-      }
-      if (!debugLogEl) return;
-      const computedDisplay = getComputedStyle(debugLogEl).display;
-      if (computedDisplay === "none") {
-        return;
-      }
-      const now = new Date().toLocaleTimeString();
-      debugLogEl.textContent = `${now}: ${message}\n${debugLogEl.textContent}`.slice(0, 1200);
-    }
-
-    function waitForOpenCvReady() {
-      return new Promise((resolve, reject) => {
-        const timeoutMs = 45000;
-        const started = performance.now();
-
-        const check = () => {
-          if (window.cv && typeof window.cv.Mat === "function" && typeof window.cv.solvePnP === "function") {
-            resolve();
-            return;
-          }
-
-          if (window.cv && window.cv.ready) {
-            window.cv.ready.then(resolve).catch(reject);
-            return;
-          }
-
-          if (performance.now() - started > timeoutMs) {
-            reject(new Error("OpenCV.js failed to load"));
-            return;
-          }
-
-          requestAnimationFrame(check);
+    <script>
+        // QR Code to 3D Model mapping
+        const QR_MODEL_MAP = {
+            'cube': { type: 'cube', color: 0x00ff00, size: 0.1 },
+            'sphere': { type: 'sphere', color: 0xff0000, size: 0.08 },
+            'pyramid': { type: 'pyramid', color: 0x0000ff, size: 0.1 },
+            'torus': { type: 'torus', color: 0xffff00, size: 0.08 },
+            'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.05, color: 0xff0000 }
         };
 
-        if (window.cv && typeof window.cv.Mat === "function") {
-          resolve();
-          return;
-        }
+        class ARQRViewer {
+            constructor() {
+                this.video = document.getElementById('video');
+                this.canvas3d = document.getElementById('canvas3d');
+                this.scanCanvas = document.getElementById('scanCanvas');
+                this.scanCtx = this.scanCanvas.getContext('2d');
+                this.info = document.getElementById('info');
+                this.loading = document.getElementById('loading');
 
-        if (window.cv) {
-          const prior = window.cv.onRuntimeInitialized;
-          window.cv.onRuntimeInitialized = () => {
-            if (typeof prior === "function") {
-              try {
-                prior();
-              } catch (error) {
-                console.warn("OpenCV onRuntimeInitialized handler threw", error);
-              }
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.model = null;
+                this.currentQRData = null;
+                this.lastQRTime = 0;
+                this.qrTimeout = 800; // Keep model 800ms after losing QR
+
+                // Detection buffer for stability
+                this.detectionBuffer = [];
+                this.bufferSize = 3;
+                this.consecutiveFailures = 0;
+                this.maxFailures = 2;
+
+                // Position smoothing
+                this.lastPosition = null;
+                this.smoothing = 0.4;
+
+                // GLTF Loader and cache
+                this.gltfLoader = new THREE.GLTFLoader();
+                this.modelCache = {};
+                this.loadingModels = {};
+
+                this.init();
             }
-            resolve();
-          };
-        }
 
-        check();
-      });
-    }
-
-    async function requestCamera() {
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
-
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (error) {
-        // Fallback without facingMode constraint.
-        if (constraints.video && constraints.video.facingMode) {
-          delete constraints.video.facingMode;
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-        } else {
-          throw error;
-        }
-      }
-
-      videoEl.setAttribute("playsinline", "true");
-      videoEl.setAttribute("autoplay", "true");
-      videoEl.setAttribute("muted", "true");
-      videoEl.playsInline = true;
-      videoEl.autoplay = true;
-      videoEl.muted = true;
-      videoEl.srcObject = stream;
-      await videoEl.play();
-    }
-
-    function configureForVideoDimensions() {
-      const vw = videoEl.videoWidth;
-      const vh = videoEl.videoHeight;
-      if (!vw || !vh) {
-        throw new Error("Video metadata not ready yet");
-      }
-
-      overlayCanvas.width = vw;
-      overlayCanvas.height = vh;
-
-      renderer.setSize(vw, vh, false);
-      console.log(`Video dimensions detected: ${vw}x${vh}`);
-
-      const f = Math.max(vw, vh);
-      const cx = vw / 2;
-      const cy = vh / 2;
-      const near = 0.001;
-      const far = 1000;
-
-      const projectionMatrix = new THREE.Matrix4();
-      projectionMatrix.set(
-        2 * f / vw, 0, 1 - (2 * cx) / vw, 0,
-        0, 2 * f / vh, (2 * cy) / vh - 1, 0,
-        0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near),
-        0, 0, -1, 0
-      );
-
-      camera.projectionMatrix.copy(projectionMatrix);
-      camera.matrixWorld.identity();
-      camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-
-      renderer.domElement.style.width = "100vw";
-      renderer.domElement.style.height = "100vh";
-      videoEl.style.width = "100vw";
-      videoEl.style.height = "100vh";
-    }
-
-    window.addEventListener("resize", () => {
-      renderer.domElement.style.width = "100vw";
-      renderer.domElement.style.height = "100vh";
-      videoEl.style.width = "100vw";
-      videoEl.style.height = "100vh";
-    });
-
-    function createPoseMatrixFromSolvePnP(rvec, tvec) {
-      const rotation = new cv.Mat();
-      cv.Rodrigues(rvec, rotation);
-
-      const mat = new THREE.Matrix4();
-      mat.set(
-        rotation.doubleAt(0, 0), rotation.doubleAt(0, 1), rotation.doubleAt(0, 2), tvec.doubleAt(0, 0),
-        rotation.doubleAt(1, 0), rotation.doubleAt(1, 1), rotation.doubleAt(1, 2), tvec.doubleAt(1, 0),
-        rotation.doubleAt(2, 0), rotation.doubleAt(2, 1), rotation.doubleAt(2, 2), tvec.doubleAt(2, 0),
-        0, 0, 0, 1
-      );
-
-      rotation.delete();
-
-      const cvToThree = new THREE.Matrix4();
-      cvToThree.set(
-        1, 0, 0, 0,
-        0, -1, 0, 0,
-        0, 0, -1, 0,
-        0, 0, 0, 1
-      );
-
-      mat.multiply(cvToThree);
-      return mat;
-    }
-
-    function estimatePose(corners, vw, vh) {
-      const half = QR_SIZE_M / 2;
-      const objectPoints = cv.matFromArray(4, 3, cv.CV_32F, [
-        -half, half, 0,
-        half, half, 0,
-        half, -half, 0,
-        -half, -half, 0
-      ]);
-
-      const imagePoints = cv.matFromArray(4, 2, cv.CV_32F, [
-        corners.topLeftCorner.x, corners.topLeftCorner.y,
-        corners.topRightCorner.x, corners.topRightCorner.y,
-        corners.bottomRightCorner.x, corners.bottomRightCorner.y,
-        corners.bottomLeftCorner.x, corners.bottomLeftCorner.y
-      ]);
-
-      const f = Math.max(vw, vh);
-      const cx = vw / 2;
-      const cy = vh / 2;
-      const cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, [
-        f, 0, cx,
-        0, f, cy,
-        0, 0, 1
-      ]);
-
-      const distCoeffs = cv.Mat.zeros(4, 1, cv.CV_64F);
-      const rvec = new cv.Mat();
-      const tvec = new cv.Mat();
-
-      const success = cv.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec, false, cv.SOLVEPNP_ITERATIVE);
-
-      objectPoints.delete();
-      imagePoints.delete();
-      cameraMatrix.delete();
-      distCoeffs.delete();
-
-      if (!success) {
-        rvec.delete();
-        tvec.delete();
-        throw new Error("solvePnP failed");
-      }
-
-      return { rvec, tvec };
-    }
-
-    async function loadModelForPayload(payload) {
-      if (!QR_TO_MODEL[payload]) {
-        return null;
-      }
-
-      // Test cube
-      if (QR_TO_MODEL[payload] === "TEST_CUBE") {
-        const geometry = new THREE.BoxGeometry(QR_SIZE_M, QR_SIZE_M, QR_SIZE_M);
-        const material = new THREE.MeshStandardMaterial({
-          color: 0x00ff00,
-          metalness: 0.3,
-          roughness: 0.7
-        });
-        const cube = new THREE.Mesh(geometry, material);
-        cube.position.y = QR_SIZE_M / 2; // Sit on top of QR
-        logDebug(`Created test cube ${QR_SIZE_M}m`);
-        return cube;
-      }
-
-      if (modelCache.has(payload)) {
-        const clone = modelCache.get(payload).clone(true);
-        logDebug(`Cloned cached model for ${payload}`);
-        return clone;
-      }
-
-      if (!modelPromiseCache.has(payload)) {
-        setStatus("loading", payload);
-        logDebug(`Loading model for ${payload}`);
-        const url = QR_TO_MODEL[payload];
-        const promise = loader.loadAsync(url).then((gltf) => {
-          const sceneRoot = gltf.scene || gltf.scenes[0];
-
-          // Log model info
-          const bbox = new THREE.Box3().setFromObject(sceneRoot);
-          const size = new THREE.Vector3();
-          bbox.getSize(size);
-          logDebug(`Model loaded: size=(${size.x.toFixed(3)}, ${size.y.toFixed(3)}, ${size.z.toFixed(3)})`);
-
-          let meshCount = 0;
-          sceneRoot.traverse((child) => {
-            if (child.isMesh || child.isSkinnedMesh) {
-              meshCount++;
-              child.castShadow = false;
-              child.receiveShadow = false;
+            async init() {
+                await this.setupCamera();
+                this.setupThreeJS();
+                this.startScanning();
+                this.loading.style.display = 'none';
             }
-          });
-          logDebug(`Model has ${meshCount} meshes`);
 
-          modelCache.set(payload, sceneRoot);
-          return sceneRoot;
-        }).finally(() => {
-          modelPromiseCache.delete(payload);
+            async setupCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'environment',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    });
+                    this.video.srcObject = stream;
+
+                    return new Promise((resolve) => {
+                        this.video.onloadedmetadata = () => {
+                            this.video.play();
+                            this.scanCanvas.width = this.video.videoWidth;
+                            this.scanCanvas.height = this.video.videoHeight;
+                            resolve();
+                        };
+                    });
+                } catch (err) {
+                    this.info.textContent = 'Camera access denied: ' + err.message;
+                    console.error('Camera error:', err);
+                }
+            }
+
+            setupThreeJS() {
+                // Scene
+                this.scene = new THREE.Scene();
+
+                // Camera
+                const aspect = window.innerWidth / window.innerHeight;
+                this.camera = new THREE.PerspectiveCamera(45, aspect, 0.01, 1000);
+                this.camera.position.z = 0.5;
+
+                // Renderer
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas3d,
+                    alpha: true,
+                    antialias: true
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+
+                // Lights
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                this.scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(1, 1, 1);
+                this.scene.add(directionalLight);
+
+                // Window resize handler
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                // Start render loop
+                this.animate();
+            }
+
+            create3DModel(modelConfig) {
+                if (modelConfig.type === 'glb') {
+                    // Return placeholder for GLB models (will be loaded async)
+                    const placeholder = new THREE.Group();
+                    placeholder.userData.isPlaceholder = true;
+                    this.loadGLBModel(modelConfig, placeholder);
+                    return placeholder;
+                }
+
+                let geometry;
+
+                switch(modelConfig.type) {
+                    case 'cube':
+                        geometry = new THREE.BoxGeometry(modelConfig.size, modelConfig.size, modelConfig.size);
+                        break;
+                    case 'sphere':
+                        geometry = new THREE.SphereGeometry(modelConfig.size, 32, 32);
+                        break;
+                    case 'pyramid':
+                        geometry = new THREE.ConeGeometry(modelConfig.size, modelConfig.size * 1.5, 4);
+                        break;
+                    case 'torus':
+                        geometry = new THREE.TorusGeometry(modelConfig.size, modelConfig.size * 0.4, 16, 100);
+                        break;
+                    default:
+                        geometry = new THREE.BoxGeometry(modelConfig.size, modelConfig.size, modelConfig.size);
+                }
+
+                const material = new THREE.MeshPhongMaterial({
+                    color: modelConfig.color,
+                    shininess: 100
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                return mesh;
+            }
+
+            async loadGLBModel(modelConfig, placeholder) {
+                const path = modelConfig.path;
+
+                // Check cache
+                if (this.modelCache[path]) {
+                    const clonedModel = this.modelCache[path].clone();
+                    this.replaceWithLoadedModel(placeholder, clonedModel, modelConfig);
+                    return;
+                }
+
+                // Check if already loading
+                if (this.loadingModels[path]) {
+                    this.loadingModels[path].push({ placeholder, modelConfig });
+                    return;
+                }
+
+                // Start loading
+                this.loadingModels[path] = [{ placeholder, modelConfig }];
+
+                try {
+                    this.gltfLoader.load(
+                        path,
+                        (gltf) => {
+                            const loadedModel = gltf.scene;
+                            this.modelCache[path] = loadedModel;
+
+                            // Replace all waiting placeholders
+                            for (const waiting of this.loadingModels[path]) {
+                                const clonedModel = loadedModel.clone();
+                                this.replaceWithLoadedModel(waiting.placeholder, clonedModel, waiting.modelConfig);
+                            }
+
+                            delete this.loadingModels[path];
+                        },
+                        (xhr) => {
+                            const percent = (xhr.loaded / xhr.total) * 100;
+                            console.log(`Loading ${path}: ${percent.toFixed(0)}%`);
+                        },
+                        (error) => {
+                            console.error('Error loading GLB model:', error);
+                            delete this.loadingModels[path];
+                        }
+                    );
+                } catch (error) {
+                    console.error('Error loading GLB model:', error);
+                    delete this.loadingModels[path];
+                }
+            }
+
+            replaceWithLoadedModel(placeholder, loadedModel, modelConfig) {
+                if (!placeholder.parent) return;
+
+                // Apply scale
+                if (modelConfig.scale) {
+                    loadedModel.scale.set(modelConfig.scale, modelConfig.scale, modelConfig.scale);
+                }
+
+                // Copy position and rotation from placeholder
+                loadedModel.position.copy(placeholder.position);
+                loadedModel.rotation.copy(placeholder.rotation);
+
+                // Replace in scene
+                placeholder.parent.add(loadedModel);
+                placeholder.parent.remove(placeholder);
+
+                // Update reference if this is current model
+                if (this.model === placeholder) {
+                    this.model = loadedModel;
+                }
+            }
+
+            updateModel(qrData, qrLocation) {
+                const now = Date.now();
+                const modelConfig = QR_MODEL_MAP[qrData];
+
+                if (!modelConfig) {
+                    // Keep model visible during timeout
+                    if (this.model && (now - this.lastQRTime) < this.qrTimeout) {
+                        // Continue rotating even when not detecting
+                        this.model.rotation.x += 0.01;
+                        this.model.rotation.y += 0.02;
+                        return;
+                    }
+                    if (this.model) {
+                        this.scene.remove(this.model);
+                        this.model = null;
+                        this.currentQRData = null;
+                        this.lastPosition = null;
+                    }
+                    return;
+                }
+
+                this.lastQRTime = now;
+
+                // Create model if needed
+                if (this.currentQRData !== qrData) {
+                    if (this.model) {
+                        this.scene.remove(this.model);
+                    }
+                    this.model = this.create3DModel(modelConfig);
+                    this.scene.add(this.model);
+                    this.currentQRData = qrData;
+                    this.lastPosition = null;
+                }
+
+                // Calculate target position
+                const centerX = (qrLocation.x / this.video.videoWidth) * 2 - 1;
+                const centerY = -((qrLocation.y / this.video.videoHeight) * 2 - 1);
+                const qrSize = qrLocation.size / this.video.videoWidth;
+                const distance = 0.15 / qrSize;
+
+                const fov = this.camera.fov * (Math.PI / 180);
+                const height = 2 * Math.tan(fov / 2) * distance;
+                const width = height * this.camera.aspect;
+
+                const targetX = centerX * width / 2;
+                const targetY = centerY * height / 2;
+                const targetZ = -distance;
+
+                // Smooth position
+                if (this.lastPosition) {
+                    this.model.position.x = this.lastPosition.x + (targetX - this.lastPosition.x) * this.smoothing;
+                    this.model.position.y = this.lastPosition.y + (targetY - this.lastPosition.y) * this.smoothing;
+                    this.model.position.z = this.lastPosition.z + (targetZ - this.lastPosition.z) * this.smoothing;
+                } else {
+                    this.model.position.x = targetX;
+                    this.model.position.y = targetY;
+                    this.model.position.z = targetZ;
+                }
+
+                this.lastPosition = {
+                    x: this.model.position.x,
+                    y: this.model.position.y,
+                    z: this.model.position.z
+                };
+
+                // Rotate model (works for both simple meshes and GLB models)
+                if (this.model) {
+                    this.model.rotation.x += 0.01;
+                    this.model.rotation.y += 0.02;
+                }
+            }
+
+            startScanning() {
+                const scan = () => {
+                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
+                        this.scanCanvas.width = this.video.videoWidth;
+                        this.scanCanvas.height = this.video.videoHeight;
+                        this.scanCtx.drawImage(this.video, 0, 0, this.scanCanvas.width, this.scanCanvas.height);
+
+                        const imageData = this.scanCtx.getImageData(0, 0, this.scanCanvas.width, this.scanCanvas.height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: "attemptBoth" // Try both normal and inverted
+                        });
+
+                        if (code) {
+                            this.consecutiveFailures = 0;
+                            const qrData = code.data.toLowerCase().trim();
+                            const qrLocation = {
+                                x: (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2,
+                                y: (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2,
+                                size: Math.abs(code.location.bottomRightCorner.x - code.location.topLeftCorner.x)
+                            };
+
+                            // Add to buffer
+                            this.detectionBuffer.push({ data: qrData, location: qrLocation });
+                            if (this.detectionBuffer.length > this.bufferSize) {
+                                this.detectionBuffer.shift();
+                            }
+
+                            // Get most common detection
+                            const detection = this.getStableDetection();
+                            if (detection) {
+                                this.updateModel(detection.data, detection.location);
+                                this.info.textContent = `QR Detected: ${detection.data}`;
+                            }
+                        } else {
+                            this.consecutiveFailures++;
+
+                            // Clear buffer after consecutive failures
+                            if (this.consecutiveFailures >= this.maxFailures) {
+                                this.detectionBuffer = [];
+                            }
+
+                            // Update model to trigger timeout logic
+                            this.updateModel(null, null);
+
+                            const now = Date.now();
+                            if (now - this.lastQRTime >= this.qrTimeout) {
+                                this.info.textContent = 'Scanning for QR codes...';
+                            }
+                        }
+                    }
+
+                    requestAnimationFrame(scan);
+                };
+
+                scan();
+            }
+
+            getStableDetection() {
+                if (this.detectionBuffer.length === 0) return null;
+
+                // Count occurrences of each QR data
+                const counts = {};
+                for (const det of this.detectionBuffer) {
+                    counts[det.data] = (counts[det.data] || 0) + 1;
+                }
+
+                // Find most common
+                let maxCount = 0;
+                let mostCommon = null;
+                for (const [data, count] of Object.entries(counts)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mostCommon = data;
+                    }
+                }
+
+                // Find latest location for most common data
+                for (let i = this.detectionBuffer.length - 1; i >= 0; i--) {
+                    if (this.detectionBuffer[i].data === mostCommon) {
+                        return this.detectionBuffer[i];
+                    }
+                }
+
+                return null;
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        // Start the app when page loads
+        window.addEventListener('load', () => {
+            new ARQRViewer();
         });
-        modelPromiseCache.set(payload, promise);
-      }
-
-      const cached = await modelPromiseCache.get(payload);
-      if (!cached) {
-        return null;
-      }
-      return cached.clone(true);
-    }
-
-    function detachModel() {
-      for (const child of [...userRotationGroup.children]) {
-        if (child === debugLine) continue;
-        userRotationGroup.remove(child);
-      }
-      anchorGroup.visible = false;
-      activePayload = null;
-      userRotationGroup.rotation.set(0, 0, 0);
-      userRotationGroup.scale.setScalar(1);
-      userAdjustments.scale = 1;
-      userAdjustments.heightOffset = 0;
-      updateDebugControlsFromState();
-      activePointers.clear();
-      resetInteractionBaselines();
-      currentModel = null;
-      updateDebugLine();
-    }
-
-    async function handleQRCodeDetection(code) {
-      const now = performance.now();
-      lastSeenAt = now;
-
-      const payload = code.data.trim();
-      setStatus("scanning", payload);
-
-      if (!QR_TO_MODEL[payload]) {
-        if (activePayload) {
-          detachModel();
-        }
-        setStatus("unknown", payload);
-        return;
-      }
-
-      if (activePayload !== payload) {
-        setStatus("scanning", payload);
-        if (activePayload) {
-          detachModel();
-        }
-        const model = await loadModelForPayload(payload);
-        if (!model) {
-          setStatus("unknown", payload);
-          return;
-        }
-        detachModel();
-        userRotationGroup.add(model);
-        userRotationGroup.rotation.set(0, 0, 0);
-        updateUserScale(1);
-        model.updateMatrixWorld(true);
-        logDebug(`Model added with scale ${userRotationGroup.scale.x.toFixed(3)}`);
-        activePayload = payload;
-        currentModel = model;
-        updateDebugLine();
-        setStatus("ready", payload);
-      } else {
-        setStatus("ready", payload);
-      }
-
-      try {
-        const pose = estimatePose(code.location, overlayCanvas.width, overlayCanvas.height);
-        const matrix = createPoseMatrixFromSolvePnP(pose.rvec, pose.tvec);
-        pose.rvec.delete();
-        pose.tvec.delete();
-
-        anchorGroup.matrix.copy(matrix);
-        anchorGroup.matrix.decompose(anchorGroup.position, anchorGroup.quaternion, anchorGroup.scale);
-        anchorGroup.visible = true;
-
-        const worldPos = new THREE.Vector3();
-        anchorGroup.getWorldPosition(worldPos);
-        logDebug(`Anchor pos: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}, ${worldPos.z.toFixed(2)}) visible=${anchorGroup.visible} children=${userRotationGroup.children.length}`);
-      } catch (error) {
-        logDebug(`Pose estimation error: ${error.message}`);
-      }
-    }
-
-    function checkTrackingTimeout() {
-      if (!anchorGroup.visible) {
-        return;
-      }
-
-      const now = performance.now();
-      if (now - lastSeenAt > LOST_TIMEOUT_S * 1000) {
-        detachModel();
-        setStatus("idle");
-      }
-    }
-
-    async function processFrame() {
-      if (!videoEl.videoWidth || !videoEl.videoHeight) {
-        if (!hasLoggedVideoWait) {
-          logDebug("Video metadata not ready during processFrame");
-          hasLoggedVideoWait = true;
-        }
-        return;
-      }
-
-      hasLoggedVideoWait = false;
-
-      if (isProcessingFrame) {
-        return;
-      }
-
-      isProcessingFrame = true;
-      overlayCtx.drawImage(videoEl, 0, 0, overlayCanvas.width, overlayCanvas.height);
-      const imageData = overlayCtx.getImageData(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-      try {
-        const code = jsQR(imageData.data, overlayCanvas.width, overlayCanvas.height, { inversionAttempts: "dontInvert" });
-        if (code) {
-          await handleQRCodeDetection(code);
-          lastNoQrLogAt = performance.now();
-        } else if (performance.now() - lastNoQrLogAt > 1500) {
-          logDebug("QR not detected in current frame");
-          lastNoQrLogAt = performance.now();
-        }
-      } catch (error) {
-        logDebug(`QR scan error: ${error.message}`);
-      } finally {
-        isProcessingFrame = false;
-      }
-    }
-
-    function clampScale(value) {
-      return Math.min(MODEL_MAX_SCALE, Math.max(MODEL_MIN_SCALE, value));
-    }
-
-    function currentPinchDistance() {
-      if (activePointers.size < 2) {
-        return null;
-      }
-      const points = Array.from(activePointers.values());
-      const a = points[0];
-      const b = points[1];
-      return Math.hypot(a.x - b.x, a.y - b.y);
-    }
-
-    function updateUserScale(nextScale) {
-      userAdjustments.scale = clampScale(nextScale);
-      userRotationGroup.scale.setScalar(userAdjustments.scale);
-      logDebug(`Scale updated to ${userAdjustments.scale.toFixed(2)}`);
-      if (debugScaleValueEl) {
-        debugScaleValueEl.textContent = userAdjustments.scale.toFixed(2);
-      }
-      if (debugScaleInput && document.activeElement !== debugScaleInput) {
-        debugScaleInput.value = userAdjustments.scale.toFixed(2);
-      }
-      updateDebugLine();
-    }
-
-    function resetInteractionBaselines() {
-      pointerTracking.primaryId = null;
-      pointerTracking.pinchStartDistance = null;
-      pointerTracking.pinchStartScale = userAdjustments.scale;
-    }
-
-    function setupPointerControls() {
-      const element = renderer.domElement;
-
-      element.addEventListener("pointerdown", (event) => {
-        if (!anchorGroup.visible) return;
-
-        activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-        if (activePointers.size === 1) {
-          pointerTracking.primaryId = event.pointerId;
-          pointerTracking.startX = event.clientX;
-          pointerTracking.startRotY = userRotationGroup.rotation.y;
-          pointerTracking.pinchStartScale = userAdjustments.scale;
-        } else if (activePointers.size === 2) {
-          pointerTracking.pinchStartDistance = currentPinchDistance();
-          pointerTracking.pinchStartScale = userAdjustments.scale;
-        }
-
-        element.setPointerCapture?.(event.pointerId);
-      });
-
-      element.addEventListener("pointermove", (event) => {
-        if (!activePointers.has(event.pointerId)) return;
-
-        activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-        if (pointerTracking.primaryId === event.pointerId && activePointers.size === 1) {
-          const deltaX = event.clientX - pointerTracking.startX;
-          const rotationDelta = (deltaX / window.innerWidth) * Math.PI;
-          userRotationGroup.rotation.y = pointerTracking.startRotY + rotationDelta;
-        }
-
-        if (activePointers.size >= 2 && pointerTracking.pinchStartDistance) {
-          const distance = currentPinchDistance();
-          if (distance && pointerTracking.pinchStartDistance > 0) {
-            const scaleFactor = distance / pointerTracking.pinchStartDistance;
-            updateUserScale(pointerTracking.pinchStartScale * scaleFactor);
-          }
-        }
-      });
-
-      const releasePointer = (event) => {
-        if (!activePointers.has(event.pointerId)) return;
-
-        element.releasePointerCapture?.(event.pointerId);
-        activePointers.delete(event.pointerId);
-
-      if (pointerTracking.primaryId === event.pointerId) {
-        pointerTracking.primaryId = null;
-      }
-
-      if (activePointers.size === 1 && !pointerTracking.primaryId) {
-        const [remainingId, point] = activePointers.entries().next().value;
-        pointerTracking.primaryId = remainingId;
-        pointerTracking.startX = point.x;
-        pointerTracking.startRotY = userRotationGroup.rotation.y;
-      }
-
-      if (activePointers.size < 2) {
-        pointerTracking.pinchStartDistance = null;
-      }
-
-      if (activePointers.size === 0) {
-        resetInteractionBaselines();
-      }
-      updateDebugControlsFromState();
-    };
-
-      element.addEventListener("pointerup", releasePointer);
-      element.addEventListener("pointercancel", releasePointer);
-      element.addEventListener("pointerleave", releasePointer);
-
-      element.addEventListener("dblclick", () => {
-        if (!anchorGroup.visible) return;
-        userRotationGroup.rotation.set(0, 0, 0);
-        updateUserScale(1);
-        resetInteractionBaselines();
-      });
-    }
-
-    function startRenderLoop() {
-      const animate = (time) => {
-        processFrame();
-        checkTrackingTimeout();
-        renderer.render(scene, camera);
-        updateDebugLine();
-        requestAnimationFrame(animate);
-      };
-      requestAnimationFrame(animate);
-    }
-
-    async function initAR() {
-      try {
-        await loadOpenCvScript();
-        await waitForOpenCvReady();
-      } catch (error) {
-        throw new Error(`OpenCV.js не загрузился: ${error.message}`);
-      }
-
-      try {
-        await requestCamera();
-      } catch (error) {
-        throw new Error(`Камера недоступна: ${error.message}`);
-      }
-
-      await new Promise((resolve) => {
-        if (videoEl.readyState >= 2) {
-          resolve();
-        } else {
-          videoEl.onloadedmetadata = () => resolve();
-        }
-      });
-
-      configureForVideoDimensions();
-      setupPointerControls();
-      startRenderLoop();
-      setStatus("idle");
-      console.log("AR initialized: video and OpenCV ready");
-      debugControlsEl?.classList.remove("hidden-control");
-      updateDebugControlsFromState();
-      if (debugShowLineInput) {
-        debugShowLineInput.checked = true;
-      }
-    }
-
-    function stopStream() {
-      if (!stream) return;
-      for (const track of stream.getTracks()) {
-        track.stop();
-      }
-      stream = null;
-    }
-
-    startButton.addEventListener("click", async () => {
-      permissionErrorEl.style.display = "none";
-      console.log("AR start button pressed");
-      try {
-        await initAR();
-        permissionOverlay.classList.add("hidden");
-      } catch (error) {
-        permissionErrorEl.textContent = error.message;
-        permissionErrorEl.style.display = "block";
-        stopStream();
-      }
-    });
-
-    window.addEventListener("beforeunload", stopStream);
-
-    if (debugScaleInput) {
-      debugScaleInput.addEventListener("input", (event) => {
-        const next = parseFloat(event.target.value) || 1;
-        updateUserScale(next);
-      });
-    }
-
-    if (debugHeightInput) {
-      debugHeightInput.addEventListener("input", (event) => {
-        const next = parseFloat(event.target.value) || 0;
-        updateHeightOffset(next);
-      });
-    }
-
-    function updateHeightOffset(nextOffset) {
-      userAdjustments.heightOffset = THREE.MathUtils.clamp(nextOffset, -0.5, 0.5);
-      userRotationGroup.position.y = userAdjustments.heightOffset;
-      if (debugHeightValueEl) {
-        debugHeightValueEl.textContent = userAdjustments.heightOffset.toFixed(3);
-      }
-      if (debugHeightInput && document.activeElement !== debugHeightInput) {
-        debugHeightInput.value = userAdjustments.heightOffset.toFixed(3);
-      }
-      updateDebugLine();
-    }
-
-    function updateDebugControlsFromState() {
-      updateUserScale(userAdjustments.scale);
-      updateHeightOffset(userAdjustments.heightOffset);
-      updateDebugLine();
-    }
-
-    function updateDebugLine() {
-      if (!debugLine) {
-        return;
-      }
-      const shouldShow = debugShowLineInput ? debugShowLineInput.checked && anchorGroup.visible : anchorGroup.visible;
-      debugLine.visible = shouldShow && !!currentModel;
-      if (!debugLine.visible || !currentModel) {
-        return;
-      }
-      scratchBox.setFromObject(currentModel);
-      scratchBox.getCenter(scratchCenter);
-      userRotationGroup.worldToLocal(scratchCenter);
-      const positions = debugLineGeometry.attributes.position.array;
-      positions[0] = 0;
-      positions[1] = 0;
-      positions[2] = 0;
-      positions[3] = scratchCenter.x;
-      positions[4] = scratchCenter.y;
-      positions[5] = scratchCenter.z;
-      debugLineGeometry.attributes.position.needsUpdate = true;
-    }
-
-    if (debugShowLineInput) {
-      debugShowLineInput.addEventListener("change", () => {
-        debugLine.visible = debugShowLineInput.checked && anchorGroup.visible;
-      });
-    }
-  </script>
+    </script>
 </body>
 </html>
