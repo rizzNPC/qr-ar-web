@@ -301,6 +301,8 @@
     let lastSeenAt = 0;
     let isProcessingFrame = false;
     let stream = null;
+    let hasLoggedVideoWait = false;
+    let lastNoQrLogAt = 0;
     const activePointers = new Map();
     const pointerTracking = {
       primaryId: null,
@@ -475,6 +477,7 @@
       overlayCanvas.height = vh;
 
       renderer.setSize(vw, vh, false);
+      console.log(`Video dimensions detected: ${vw}x${vh}`);
 
       const f = Math.max(vw, vh);
       const cx = vw / 2;
@@ -711,7 +714,17 @@
     }
 
     async function processFrame() {
-      if (isProcessingFrame || !videoEl.videoWidth || !videoEl.videoHeight) {
+      if (!videoEl.videoWidth || !videoEl.videoHeight) {
+        if (!hasLoggedVideoWait) {
+          logDebug("Video metadata not ready during processFrame");
+          hasLoggedVideoWait = true;
+        }
+        return;
+      }
+
+      hasLoggedVideoWait = false;
+
+      if (isProcessingFrame) {
         return;
       }
 
@@ -723,6 +736,10 @@
         const code = jsQR(imageData.data, overlayCanvas.width, overlayCanvas.height, { inversionAttempts: "dontInvert" });
         if (code) {
           await handleQRCodeDetection(code);
+          lastNoQrLogAt = performance.now();
+        } else if (performance.now() - lastNoQrLogAt > 1500) {
+          logDebug("QR not detected in current frame");
+          lastNoQrLogAt = performance.now();
         }
       } catch (error) {
         logDebug(`QR scan error: ${error.message}`);
