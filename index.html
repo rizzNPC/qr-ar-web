@@ -244,7 +244,7 @@
     const LOST_TIMEOUT_S = 2.5;
 
     // Model sizing and interaction parameters.
-    const MODEL_FIT_RATIO = 0.55;
+    const MODEL_FIT_RATIO = 1;
     const MODEL_MIN_SCALE = 0.4;
     const MODEL_MAX_SCALE = 2.5;
 
@@ -644,7 +644,7 @@
       }
 
       if (activePayload !== payload) {
-        setStatus("scanning", payload);
+      setStatus("scanning", payload);
       if (activePayload) {
         detachModel();
       }
@@ -657,6 +657,15 @@
       userRotationGroup.add(model);
       userRotationGroup.rotation.set(0, 0, 0);
       updateUserScale(1);
+      model.updateMatrixWorld(true);
+      logDebug(`Model added with scale ${userRotationGroup.scale.x.toFixed(3)}`);
+      if (model.traverse) {
+        model.traverse((child) => {
+          if (child.isMesh || child.isSkinnedMesh) {
+            logDebug(`Mesh ${child.name || "(unnamed)"} bounding box: ${JSON.stringify(child.geometry?.boundingBox || {})}`);
+          }
+        });
+      }
       activePayload = payload;
       setStatus("ready", payload);
     } else {
