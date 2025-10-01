@@ -336,7 +336,10 @@
     }
 
     function logDebug(message) {
-      if (debugLogEl.style.display === "none") return;
+      if (debugLogEl.style.display === "none") {
+        console.debug(message);
+        return;
+      }
       const now = new Date().toLocaleTimeString();
       debugLogEl.textContent = `${now}: ${message}\n${debugLogEl.textContent}`.slice(0, 1200);
     }
@@ -679,8 +682,10 @@
         pose.tvec.delete();
 
         anchorGroup.matrix.copy(matrix);
-        anchorGroup.matrixWorldNeedsUpdate = true;
+        anchorGroup.matrixWorld.copy(matrix);
+        anchorGroup.matrixWorldNeedsUpdate = false;
         anchorGroup.updateMatrixWorld(true);
+        userRotationGroup.updateMatrixWorld(true);
         anchorGroup.visible = true;
       } catch (error) {
         logDebug(`Pose estimation error: ${error.message}`);
