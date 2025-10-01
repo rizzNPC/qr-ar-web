@@ -136,16 +136,15 @@
   </div>
   <div id="debug-log"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-cfkZLCfotqs5BrteLoI0lp4rWuIwoMvVJE9idh+NEnNh4tW7x1YgnSUZXoqBYwyg" crossorigin="anonymous"></script>
-  <script defer src="https://docs.opencv.org/4.x/opencv.js" integrity="sha384-C4KIFE9B+gL4qdousF1s6msuLAJbTYIp9KpiP003BdNJNaL8EmDq0PMuGcltO8mO" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script defer src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
     import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
     // Mapping QR payload text -> GLB model URL relative to site root.
     const QR_TO_MODEL = {
-      "chair": "assets/models/chair.glb",
-      "table": "assets/models/table.glb",
+      "cesiumman": "assets/models/CesiumMan.glb",
       "https://example.com/product/42": "assets/models/product42.glb"
     };
 
@@ -594,6 +593,11 @@
     async function initAR() {
       try {
         await waitForOpenCvReady();
+      } catch (error) {
+        throw new Error(`OpenCV.js не загрузился: ${error.message}`);
+      }
+
+      try {
         await requestCamera();
       } catch (error) {
         throw new Error(`Камера недоступна: ${error.message}`);
