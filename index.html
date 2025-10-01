@@ -288,9 +288,9 @@
     const LOST_TIMEOUT_S = 2.5;
 
     // Model sizing and interaction parameters.
-    const MODEL_FIT_RATIO = 1;
+    const MODEL_FIT_RATIO = 3;
     const MODEL_MIN_SCALE = 0.4;
-    const MODEL_MAX_SCALE = 2.5;
+    const MODEL_MAX_SCALE = 5;
 
     const videoEl = document.getElementById("camera");
     const overlayCanvas = document.getElementById("overlay");
@@ -1008,14 +1008,6 @@
       });
     }
 
-    if (debugShowLineInput) {
-      debugShowLineInput.addEventListener("change", () => {
-        debugLine.visible = debugShowLineInput.checked && anchorGroup.visible;
-      });
-    }
-  </script>
-</body>
-</html>
     function updateHeightOffset(nextOffset) {
       userAdjustments.heightOffset = THREE.MathUtils.clamp(nextOffset, -0.5, 0.5);
       userRotationGroup.position.y = userAdjustments.heightOffset;
@@ -1055,3 +1047,12 @@
       positions[5] = scratchCenter.z;
       debugLineGeometry.attributes.position.needsUpdate = true;
     }
+
+    if (debugShowLineInput) {
+      debugShowLineInput.addEventListener("change", () => {
+        debugLine.visible = debugShowLineInput.checked && anchorGroup.visible;
+      });
+    }
+  </script>
+</body>
+</html>
