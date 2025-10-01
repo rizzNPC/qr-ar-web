@@ -286,6 +286,7 @@
     scene.add(anchorGroup);
 
     const userRotationGroup = new THREE.Group();
+    userRotationGroup.matrixAutoUpdate = true;
     anchorGroup.add(userRotationGroup);
 
     const loader = new GLTFLoader();
@@ -294,6 +295,7 @@
     const scratchBox = new THREE.Box3();
     const scratchCenter = new THREE.Vector3();
     const scratchSize = new THREE.Vector3();
+    const scratchMin = new THREE.Vector3();
 
     let activePayload = null;
     let lastSeenAt = 0;
@@ -337,7 +339,7 @@
 
     function logDebug(message) {
       if (debugLogEl.style.display === "none") {
-        console.debug(message);
+        console.log(message);
         return;
       }
       const now = new Date().toLocaleTimeString();
@@ -352,6 +354,7 @@
       root.position.set(0, 0, 0);
       root.rotation.set(0, 0, 0);
       root.scale.set(1, 1, 1);
+      root.matrixAutoUpdate = true;
       root.updateMatrixWorld(true);
 
       scratchBox.setFromObject(root);
@@ -368,9 +371,10 @@
       root.updateMatrixWorld(true);
       scratchBox.setFromObject(root);
       scratchBox.getCenter(scratchCenter);
+      scratchMin.copy(scratchBox.min);
       logDebug(`Model center after fit: (${scratchCenter.x.toFixed(3)}, ${scratchCenter.y.toFixed(3)}, ${scratchCenter.z.toFixed(3)})`);
 
-      root.position.sub(scratchCenter);
+      root.position.set(-scratchCenter.x, -scratchMin.y, -scratchCenter.z);
       root.updateMatrixWorld(true);
 
       root.traverse((child) => {
@@ -615,6 +619,7 @@
 
       const instance = SkeletonUtils.clone(base);
       prepareModelForAnchor(instance);
+      logDebug(`Prepared model for payload ${payload}`);
       return instance;
     }
 
@@ -687,6 +692,7 @@
         anchorGroup.updateMatrixWorld(true);
         userRotationGroup.updateMatrixWorld(true);
         anchorGroup.visible = true;
+        logDebug(`Anchor updated. Visible=${anchorGroup.visible}`);
       } catch (error) {
         logDebug(`Pose estimation error: ${error.message}`);
       }
@@ -865,6 +871,7 @@
       setupPointerControls();
       startRenderLoop();
       setStatus("idle");
+      console.log("AR initialized: video and OpenCV ready");
     }
 
     function stopStream() {
@@ -877,6 +884,7 @@
 
     startButton.addEventListener("click", async () => {
       permissionErrorEl.style.display = "none";
+      console.log("AR start button pressed");
       try {
         await initAR();
         permissionOverlay.classList.add("hidden");
