@@ -159,6 +159,7 @@
   <script type="module">
     import * as THREE from "three";
     import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+    import { SkeletonUtils } from "three/examples/jsm/utils/SkeletonUtils.js";
 
     const OPENCV_CDN_URLS = [
       "https://docs.opencv.org/4.x/opencv.js",
@@ -293,6 +294,7 @@
     const scratchBox = new THREE.Box3();
     const scratchCenter = new THREE.Vector3();
     const scratchSize = new THREE.Vector3();
+    const scratchMin = new THREE.Vector3();
 
     let activePayload = null;
     let lastSeenAt = 0;
@@ -347,6 +349,7 @@
 
       root.position.set(0, 0, 0);
       root.rotation.set(0, 0, 0);
+      root.scale.set(1, 1, 1);
       root.updateMatrixWorld(true);
 
       scratchBox.setFromObject(root);
@@ -362,7 +365,9 @@
       root.updateMatrixWorld(true);
       scratchBox.setFromObject(root);
       scratchBox.getCenter(scratchCenter);
-      root.position.sub(scratchCenter);
+      scratchMin.copy(scratchBox.min);
+
+      root.position.set(-scratchCenter.x, -scratchMin.y, -scratchCenter.z);
       root.updateMatrixWorld(true);
     }
 
@@ -565,11 +570,7 @@
         return null;
       }
 
-      if (modelCache.has(payload)) {
-        return modelCache.get(payload).clone(true);
-      }
-
-      if (!modelPromiseCache.has(payload)) {
+      if (!modelCache.has(payload) && !modelPromiseCache.has(payload)) {
         setStatus("loading", payload);
         logDebug(`Loading model for ${payload}`);
         const url = QR_TO_MODEL[payload];
@@ -579,9 +580,12 @@
             if (child.isMesh || child.isSkinnedMesh) {
               child.castShadow = false;
               child.receiveShadow = false;
+              child.frustumCulled = false;
+              if (child.geometry && !child.geometry.boundingBox) {
+                child.geometry.computeBoundingBox();
+              }
             }
           });
-          prepareModelForAnchor(sceneRoot);
           modelCache.set(payload, sceneRoot);
           return sceneRoot;
         }).finally(() => {
@@ -590,14 +594,18 @@
         modelPromiseCache.set(payload, promise);
       }
 
-      const cached = await modelPromiseCache.get(payload);
-      if (!cached) {
+      if (modelPromiseCache.has(payload)) {
+        await modelPromiseCache.get(payload);
+      }
+
+      const base = modelCache.get(payload);
+      if (!base) {
         return null;
       }
-      if (!modelCache.has(payload)) {
-        modelCache.set(payload, cached);
-      }
-      return cached.clone(true);
+
+      const instance = SkeletonUtils.clone(base);
+      prepareModelForAnchor(instance);
+      return instance;
     }
 
     function detachModel() {
