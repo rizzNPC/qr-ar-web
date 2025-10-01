@@ -123,6 +123,37 @@
       z-index: 4;
     }
 
+    #debug-controls {
+      position: fixed;
+      right: 12px;
+      bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.65);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 13px;
+      color: #fff;
+      z-index: 4;
+      width: min(240px, 90vw);
+    }
+
+    #debug-controls.hidden-control {
+      display: none;
+    }
+
+    #debug-controls label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #debug-controls input[type="range"] {
+      width: 100%;
+    }
+
     /* Instructions for maintainers:
        1) Place .glb or .gltf files under assets/models/ (already created).
        2) Update the QR_TO_MODEL mapping inside the script below to point from QR payload text to model URLs.
@@ -138,6 +169,19 @@
     <strong>Наведите камеру на QR</strong>
     <span id="hud-sub">Готово к сканированию</span>
     <small>Слайд для вращения модели</small>
+  </div>
+  <div id="debug-controls" class="hidden-control">
+    <label>
+      Масштаб: <span id="debug-scale-value">1.00</span>
+      <input type="range" id="debug-scale" min="0.1" max="2.5" value="1" step="0.01" />
+    </label>
+    <label>
+      Высота (Y): <span id="debug-height-value">0.00</span>
+      <input type="range" id="debug-height" min="-0.5" max="0.5" value="0" step="0.005" />
+    </label>
+    <label>
+      Видимость линии <input type="checkbox" id="debug-show-line" checked />
+    </label>
   </div>
   <div id="permission-overlay">
     <h1>Mind AR QR</h1>
@@ -257,6 +301,12 @@
     const permissionErrorEl = document.getElementById("permission-error");
     const startButton = document.getElementById("start-button");
     const debugLogEl = document.getElementById("debug-log");
+    const debugControlsEl = document.getElementById("debug-controls");
+    const debugScaleInput = document.getElementById("debug-scale");
+    const debugScaleValueEl = document.getElementById("debug-scale-value");
+    const debugHeightInput = document.getElementById("debug-height");
+    const debugHeightValueEl = document.getElementById("debug-height-value");
+    const debugShowLineInput = document.getElementById("debug-show-line");
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -296,6 +346,14 @@
     const scratchCenter = new THREE.Vector3();
     const scratchSize = new THREE.Vector3();
     const scratchMin = new THREE.Vector3();
+    const debugLineMaterial = new THREE.LineBasicMaterial({ color: 0x00ffcc });
+    const debugLineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 1, 0)
+    ]);
+    const debugLine = new THREE.Line(debugLineGeometry, debugLineMaterial);
+    debugLine.visible = false;
+    userRotationGroup.add(debugLine);
 
     let activePayload = null;
     let lastSeenAt = 0;
@@ -303,6 +361,7 @@
     let stream = null;
     let hasLoggedVideoWait = false;
     let lastNoQrLogAt = 0;
+    let currentModel = null;
     const activePointers = new Map();
     const pointerTracking = {
       primaryId: null,
@@ -312,7 +371,8 @@
       pinchStartScale: 1
     };
     const userAdjustments = {
-      scale: 1
+      scale: 1,
+      heightOffset: 0
     };
 
     const Status = {
@@ -633,16 +693,21 @@
     }
 
     function detachModel() {
-      while (userRotationGroup.children.length) {
-        userRotationGroup.remove(userRotationGroup.children[0]);
+      for (const child of [...userRotationGroup.children]) {
+        if (child === debugLine) continue;
+        userRotationGroup.remove(child);
       }
       anchorGroup.visible = false;
       activePayload = null;
       userRotationGroup.rotation.set(0, 0, 0);
       userRotationGroup.scale.setScalar(1);
       userAdjustments.scale = 1;
+      userAdjustments.heightOffset = 0;
+      updateDebugControlsFromState();
       activePointers.clear();
       resetInteractionBaselines();
+      currentModel = null;
+      updateDebugLine();
     }
 
     async function handleQRCodeDetection(code) {
@@ -677,6 +742,8 @@
         model.updateMatrixWorld(true);
         logDebug(`Model added with scale ${userRotationGroup.scale.x.toFixed(3)}`);
         activePayload = payload;
+        currentModel = model;
+        updateDebugLine();
         setStatus("ready", payload);
       } else {
         setStatus("ready", payload);
@@ -764,6 +831,13 @@
     function updateUserScale(nextScale) {
       userAdjustments.scale = clampScale(nextScale);
       userRotationGroup.scale.setScalar(userAdjustments.scale);
+      if (debugScaleValueEl) {
+        debugScaleValueEl.textContent = userAdjustments.scale.toFixed(2);
+      }
+      if (debugScaleInput && document.activeElement !== debugScaleInput) {
+        debugScaleInput.value = userAdjustments.scale.toFixed(2);
+      }
+      updateDebugLine();
     }
 
     function resetInteractionBaselines() {
@@ -819,25 +893,26 @@
         element.releasePointerCapture?.(event.pointerId);
         activePointers.delete(event.pointerId);
 
-        if (pointerTracking.primaryId === event.pointerId) {
-          pointerTracking.primaryId = null;
-        }
+      if (pointerTracking.primaryId === event.pointerId) {
+        pointerTracking.primaryId = null;
+      }
 
-        if (activePointers.size === 1 && !pointerTracking.primaryId) {
-          const [remainingId, point] = activePointers.entries().next().value;
-          pointerTracking.primaryId = remainingId;
-          pointerTracking.startX = point.x;
-          pointerTracking.startRotY = userRotationGroup.rotation.y;
-        }
+      if (activePointers.size === 1 && !pointerTracking.primaryId) {
+        const [remainingId, point] = activePointers.entries().next().value;
+        pointerTracking.primaryId = remainingId;
+        pointerTracking.startX = point.x;
+        pointerTracking.startRotY = userRotationGroup.rotation.y;
+      }
 
-        if (activePointers.size < 2) {
-          pointerTracking.pinchStartDistance = null;
-        }
+      if (activePointers.size < 2) {
+        pointerTracking.pinchStartDistance = null;
+      }
 
-        if (activePointers.size === 0) {
-          resetInteractionBaselines();
-        }
-      };
+      if (activePointers.size === 0) {
+        resetInteractionBaselines();
+      }
+      updateDebugControlsFromState();
+    };
 
       element.addEventListener("pointerup", releasePointer);
       element.addEventListener("pointercancel", releasePointer);
@@ -856,6 +931,7 @@
         processFrame();
         checkTrackingTimeout();
         renderer.render(scene, camera);
+        updateDebugLine();
         requestAnimationFrame(animate);
       };
       requestAnimationFrame(animate);
@@ -888,6 +964,11 @@
       startRenderLoop();
       setStatus("idle");
       console.log("AR initialized: video and OpenCV ready");
+      debugControlsEl?.classList.remove("hidden-control");
+      updateDebugControlsFromState();
+      if (debugShowLineInput) {
+        debugShowLineInput.checked = true;
+      }
     }
 
     function stopStream() {
@@ -912,6 +993,65 @@
     });
 
     window.addEventListener("beforeunload", stopStream);
+
+    if (debugScaleInput) {
+      debugScaleInput.addEventListener("input", (event) => {
+        const next = parseFloat(event.target.value) || 1;
+        updateUserScale(next);
+      });
+    }
+
+    if (debugHeightInput) {
+      debugHeightInput.addEventListener("input", (event) => {
+        const next = parseFloat(event.target.value) || 0;
+        updateHeightOffset(next);
+      });
+    }
+
+    if (debugShowLineInput) {
+      debugShowLineInput.addEventListener("change", () => {
+        debugLine.visible = debugShowLineInput.checked && anchorGroup.visible;
+      });
+    }
   </script>
 </body>
 </html>
+    function updateHeightOffset(nextOffset) {
+      userAdjustments.heightOffset = THREE.MathUtils.clamp(nextOffset, -0.5, 0.5);
+      userRotationGroup.position.y = userAdjustments.heightOffset;
+      if (debugHeightValueEl) {
+        debugHeightValueEl.textContent = userAdjustments.heightOffset.toFixed(3);
+      }
+      if (debugHeightInput && document.activeElement !== debugHeightInput) {
+        debugHeightInput.value = userAdjustments.heightOffset.toFixed(3);
+      }
+      updateDebugLine();
+    }
+
+    function updateDebugControlsFromState() {
+      updateUserScale(userAdjustments.scale);
+      updateHeightOffset(userAdjustments.heightOffset);
+      updateDebugLine();
+    }
+
+    function updateDebugLine() {
+      if (!debugLine) {
+        return;
+      }
+      const shouldShow = debugShowLineInput ? debugShowLineInput.checked && anchorGroup.visible : anchorGroup.visible;
+      debugLine.visible = shouldShow && !!currentModel;
+      if (!debugLine.visible || !currentModel) {
+        return;
+      }
+      scratchBox.setFromObject(currentModel);
+      scratchBox.getCenter(scratchCenter);
+      userRotationGroup.worldToLocal(scratchCenter);
+      const positions = debugLineGeometry.attributes.position.array;
+      positions[0] = 0;
+      positions[1] = 0;
+      positions[2] = 0;
+      positions[3] = scratchCenter.x;
+      positions[4] = scratchCenter.y;
+      positions[5] = scratchCenter.z;
+      debugLineGeometry.attributes.position.needsUpdate = true;
+    }
