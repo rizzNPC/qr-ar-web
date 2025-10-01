@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Mind AR QR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    #camera,
+    #three-canvas,
+    #overlay {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background: #000;
+    }
+
+    #overlay {
+      pointer-events: none;
+      display: none; /* Flip to block for debugging corner detection */
+    }
+
+    #hud {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 14px;
+      line-height: 1.4;
+      max-width: 70vw;
+      backdrop-filter: blur(6px);
+    }
+
+    #hud strong {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+
+    #hud small {
+      opacity: 0.7;
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+    }
+
+    #permission-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      gap: 16px;
+      text-align: center;
+      z-index: 10;
+    }
+
+    #permission-overlay.hidden {
+      display: none;
+    }
+
+    #permission-overlay button {
+      font-size: 16px;
+      padding: 12px 28px;
+      border-radius: 999px;
+      border: none;
+      background: #5a6df2;
+      color: #fff;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    #permission-overlay button:active {
+      transform: scale(0.98);
+    }
+
+    #debug-log {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      padding: 8px 12px;
+      font-size: 11px;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 8px;
+      max-width: 40vw;
+      white-space: pre-line;
+      display: none; /* Enable for verbose diagnostics */
+    }
+
+    /* Instructions for maintainers:
+       1) Place .glb or .gltf files under assets/models/ (already created).
+       2) Update the QR_TO_MODEL mapping inside the script below to point from QR payload text to model URLs.
+       3) Adjust QR_SIZE_M (in meters) to match the physical QR code edge length you print. Example: 5 cm QR => 0.05.
+       4) Deploy by committing the project and pushing to a GitHub repository with Pages enabled (root branch).
+    */
+  </style>
+</head>
+<body>
+  <video id="camera" playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <div id="hud">
+    <strong>Наведите камеру на QR</strong>
+    <span id="hud-sub">Готово к сканированию</span>
+    <small>Слайд для вращения модели</small>
+  </div>
+  <div id="permission-overlay">
+    <h1>Mind AR QR</h1>
+    <p>Нажмите, чтобы разрешить доступ к камере и запустить AR опыт.</p>
+    <button type="button" id="start-button">Запустить AR</button>
+    <p id="permission-error" style="display:none; color:#ff8a80; font-size:13px;"></p>
+  </div>
+  <div id="debug-log"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-cfkZLCfotqs5BrteLoI0lp4rWuIwoMvVJE9idh+NEnNh4tW7x1YgnSUZXoqBYwyg" crossorigin="anonymous"></script>
+  <script defer src="https://docs.opencv.org/4.x/opencv.js" integrity="sha384-C4KIFE9B+gL4qdousF1s6msuLAJbTYIp9KpiP003BdNJNaL8EmDq0PMuGcltO8mO" crossorigin="anonymous"></script>
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+    // Mapping QR payload text -> GLB model URL relative to site root.
+    const QR_TO_MODEL = {
+      "chair": "assets/models/chair.glb",
+      "table": "assets/models/table.glb",
+      "https://example.com/product/42": "assets/models/product42.glb"
+    };
+
+    // Physical edge length of the printed QR code in meters.
+    const QR_SIZE_M = 0.05;
+
+    // Seconds to wait after last sighting before hiding the model.
+    const LOST_TIMEOUT_S = 2.5;
+
+    const videoEl = document.getElementById("camera");
+    const overlayCanvas = document.getElementById("overlay");
+    const overlayCtx = overlayCanvas.getContext("2d", { willReadFrequently: true });
+    const hudEl = document.getElementById("hud");
+    const hudSubEl = document.getElementById("hud-sub");
+    const permissionOverlay = document.getElementById("permission-overlay");
+    const permissionErrorEl = document.getElementById("permission-error");
+    const startButton = document.getElementById("start-button");
+    const debugLogEl = document.getElementById("debug-log");
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.domElement.id = "three-canvas";
+    renderer.domElement.style.position = "fixed";
+    renderer.domElement.style.inset = "0";
+    renderer.domElement.style.width = "100vw";
+    renderer.domElement.style.height = "100vh";
+    renderer.domElement.style.touchAction = "none";
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 100);
+    camera.matrixAutoUpdate = false;
+
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x222233, 1.1);
+    scene.add(ambient);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.9);
+    directional.position.set(0.5, 1, 0.5);
+    scene.add(directional);
+
+    const anchorGroup = new THREE.Group();
+    anchorGroup.matrixAutoUpdate = false;
+    anchorGroup.visible = false;
+    scene.add(anchorGroup);
+
+    const userRotationGroup = new THREE.Group();
+    anchorGroup.add(userRotationGroup);
+
+    const loader = new GLTFLoader();
+    const modelCache = new Map();
+    const modelPromiseCache = new Map();
+
+    let activePayload = null;
+    let lastSeenAt = 0;
+    let isProcessingFrame = false;
+    let stream = null;
+    let pointerTracking = { active: false, startX: 0, startRotY: 0 };
+
+    const Status = {
+      idle: (payload) => ({ title: "Наведите камеру на QR", detail: payload || "Готово к сканированию" }),
+      scanning: (payload) => ({ title: "QR обнаружен", detail: payload }),
+      loading: (payload) => ({ title: "Модель загружается", detail: payload }),
+      ready: (payload) => ({ title: "Модель загружена", detail: payload }),
+      unknown: (payload) => ({ title: "Неизвестный QR", detail: payload || "Добавьте QR в мэппинг" }),
+      error: (payload) => ({ title: "Ошибка", detail: payload })
+    };
+
+    const statusState = { kind: null, detail: null };
+
+    function setStatus(kind, payload) {
+      const statusFactory = Status[kind] || Status.idle;
+      const status = statusFactory(payload);
+      const signature = `${kind}|${status.detail}`;
+      if (statusState.kind === kind && statusState.detail === status.detail) {
+        return;
+      }
+      statusState.kind = kind;
+      statusState.detail = status.detail;
+      hudEl.querySelector("strong").textContent = status.title;
+      hudSubEl.textContent = status.detail;
+    }
+
+    function logDebug(message) {
+      if (debugLogEl.style.display === "none") return;
+      const now = new Date().toLocaleTimeString();
+      debugLogEl.textContent = `${now}: ${message}\n${debugLogEl.textContent}`.slice(0, 1200);
+    }
+
+    function waitForOpenCvReady() {
+      return new Promise((resolve, reject) => {
+        const timeoutMs = 20000;
+        const started = performance.now();
+
+        const check = () => {
+          if (window.cv && typeof window.cv.Mat === "function" && typeof window.cv.solvePnP === "function") {
+            resolve();
+            return;
+          }
+
+          if (window.cv && window.cv.ready) {
+            window.cv.ready.then(resolve).catch(reject);
+            return;
+          }
+
+          if (performance.now() - started > timeoutMs) {
+            reject(new Error("OpenCV.js failed to load"));
+            return;
+          }
+
+          requestAnimationFrame(check);
+        };
+
+        if (window.cv && typeof window.cv.Mat === "function") {
+          resolve();
+          return;
+        }
+
+        if (window.cv) {
+          const prior = window.cv.onRuntimeInitialized;
+          window.cv.onRuntimeInitialized = () => {
+            if (typeof prior === "function") {
+              try {
+                prior();
+              } catch (error) {
+                console.warn("OpenCV onRuntimeInitialized handler threw", error);
+              }
+            }
+            resolve();
+          };
+        }
+
+        check();
+      });
+    }
+
+    async function requestCamera() {
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        // Fallback without facingMode constraint.
+        if (constraints.video && constraints.video.facingMode) {
+          delete constraints.video.facingMode;
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } else {
+          throw error;
+        }
+      }
+
+      videoEl.srcObject = stream;
+      await videoEl.play();
+    }
+
+    function configureForVideoDimensions() {
+      const vw = videoEl.videoWidth;
+      const vh = videoEl.videoHeight;
+      if (!vw || !vh) {
+        throw new Error("Video metadata not ready yet");
+      }
+
+      overlayCanvas.width = vw;
+      overlayCanvas.height = vh;
+
+      renderer.setSize(vw, vh, false);
+
+      const f = Math.max(vw, vh);
+      const cx = vw / 2;
+      const cy = vh / 2;
+      const near = 0.01;
+      const far = 1000;
+
+      const projectionMatrix = new THREE.Matrix4();
+      projectionMatrix.set(
+        2 * f / vw, 0, 1 - (2 * cx) / vw, 0,
+        0, 2 * f / vh, (2 * cy) / vh - 1, 0,
+        0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near),
+        0, 0, -1, 0
+      );
+
+      camera.projectionMatrix.copy(projectionMatrix);
+      camera.matrixWorld.identity();
+      camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+
+      renderer.domElement.style.width = "100vw";
+      renderer.domElement.style.height = "100vh";
+      videoEl.style.width = "100vw";
+      videoEl.style.height = "100vh";
+    }
+
+    window.addEventListener("resize", () => {
+      renderer.domElement.style.width = "100vw";
+      renderer.domElement.style.height = "100vh";
+      videoEl.style.width = "100vw";
+      videoEl.style.height = "100vh";
+    });
+
+    function createPoseMatrixFromSolvePnP(rvec, tvec) {
+      const rotation = new cv.Mat();
+      cv.Rodrigues(rvec, rotation);
+
+      const mat = new THREE.Matrix4();
+      mat.set(
+        rotation.doubleAt(0, 0), rotation.doubleAt(0, 1), rotation.doubleAt(0, 2), tvec.doubleAt(0, 0),
+        rotation.doubleAt(1, 0), rotation.doubleAt(1, 1), rotation.doubleAt(1, 2), tvec.doubleAt(1, 0),
+        rotation.doubleAt(2, 0), rotation.doubleAt(2, 1), rotation.doubleAt(2, 2), tvec.doubleAt(2, 0),
+        0, 0, 0, 1
+      );
+
+      rotation.delete();
+
+      const cvToThree = new THREE.Matrix4();
+      cvToThree.set(
+        1, 0, 0, 0,
+        0, -1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, 1
+      );
+
+      mat.multiply(cvToThree);
+      return mat;
+    }
+
+    function estimatePose(corners, vw, vh) {
+      const half = QR_SIZE_M / 2;
+      const objectPoints = cv.matFromArray(4, 3, cv.CV_32F, [
+        -half, half, 0,
+        half, half, 0,
+        half, -half, 0,
+        -half, -half, 0
+      ]);
+
+      const imagePoints = cv.matFromArray(4, 2, cv.CV_32F, [
+        corners.topLeftCorner.x, corners.topLeftCorner.y,
+        corners.topRightCorner.x, corners.topRightCorner.y,
+        corners.bottomRightCorner.x, corners.bottomRightCorner.y,
+        corners.bottomLeftCorner.x, corners.bottomLeftCorner.y
+      ]);
+
+      const f = Math.max(vw, vh);
+      const cx = vw / 2;
+      const cy = vh / 2;
+      const cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, [
+        f, 0, cx,
+        0, f, cy,
+        0, 0, 1
+      ]);
+
+      const distCoeffs = cv.Mat.zeros(4, 1, cv.CV_64F);
+      const rvec = new cv.Mat();
+      const tvec = new cv.Mat();
+
+      const success = cv.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec, false, cv.SOLVEPNP_ITERATIVE);
+
+      objectPoints.delete();
+      imagePoints.delete();
+      cameraMatrix.delete();
+      distCoeffs.delete();
+
+      if (!success) {
+        rvec.delete();
+        tvec.delete();
+        throw new Error("solvePnP failed");
+      }
+
+      return { rvec, tvec };
+    }
+
+    async function loadModelForPayload(payload) {
+      if (!QR_TO_MODEL[payload]) {
+        return null;
+      }
+
+      if (modelCache.has(payload)) {
+        return modelCache.get(payload).clone(true);
+      }
+
+      if (!modelPromiseCache.has(payload)) {
+        setStatus("loading", payload);
+        logDebug(`Loading model for ${payload}`);
+        const url = QR_TO_MODEL[payload];
+        const promise = loader.loadAsync(url).then((gltf) => {
+          const sceneRoot = gltf.scene || gltf.scenes[0];
+          sceneRoot.traverse((child) => {
+            if (child.isMesh || child.isSkinnedMesh) {
+              child.castShadow = false;
+              child.receiveShadow = false;
+            }
+          });
+          modelCache.set(payload, sceneRoot);
+          return sceneRoot;
+        }).finally(() => {
+          modelPromiseCache.delete(payload);
+        });
+        modelPromiseCache.set(payload, promise);
+      }
+
+      const cached = await modelPromiseCache.get(payload);
+      if (!cached) {
+        return null;
+      }
+      return cached.clone(true);
+    }
+
+    function detachModel() {
+      while (userRotationGroup.children.length) {
+        userRotationGroup.remove(userRotationGroup.children[0]);
+      }
+      anchorGroup.visible = false;
+      activePayload = null;
+    }
+
+    async function handleQRCodeDetection(code) {
+      const now = performance.now();
+      lastSeenAt = now;
+
+      const payload = code.data.trim();
+      setStatus("scanning", payload);
+
+      if (!QR_TO_MODEL[payload]) {
+        if (activePayload) {
+          detachModel();
+        }
+        setStatus("unknown", payload);
+        return;
+      }
+
+      if (activePayload !== payload) {
+        setStatus("scanning", payload);
+        if (activePayload) {
+          detachModel();
+        }
+        const model = await loadModelForPayload(payload);
+        if (!model) {
+          setStatus("unknown", payload);
+          return;
+        }
+        detachModel();
+        userRotationGroup.add(model);
+        userRotationGroup.rotation.set(0, 0, 0);
+        activePayload = payload;
+        setStatus("ready", payload);
+      } else {
+        setStatus("ready", payload);
+      }
+
+      try {
+        const pose = estimatePose(code.location, overlayCanvas.width, overlayCanvas.height);
+        const matrix = createPoseMatrixFromSolvePnP(pose.rvec, pose.tvec);
+        pose.rvec.delete();
+        pose.tvec.delete();
+
+        anchorGroup.matrix.copy(matrix);
+        anchorGroup.visible = true;
+      } catch (error) {
+        logDebug(`Pose estimation error: ${error.message}`);
+      }
+    }
+
+    function checkTrackingTimeout() {
+      if (!anchorGroup.visible) {
+        return;
+      }
+
+      const now = performance.now();
+      if (now - lastSeenAt > LOST_TIMEOUT_S * 1000) {
+        detachModel();
+        setStatus("idle");
+      }
+    }
+
+    async function processFrame() {
+      if (isProcessingFrame || !videoEl.videoWidth || !videoEl.videoHeight) {
+        return;
+      }
+
+      isProcessingFrame = true;
+      overlayCtx.drawImage(videoEl, 0, 0, overlayCanvas.width, overlayCanvas.height);
+      const imageData = overlayCtx.getImageData(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      try {
+        const code = jsQR(imageData.data, overlayCanvas.width, overlayCanvas.height, { inversionAttempts: "dontInvert" });
+        if (code) {
+          await handleQRCodeDetection(code);
+        }
+      } catch (error) {
+        logDebug(`QR scan error: ${error.message}`);
+      } finally {
+        isProcessingFrame = false;
+      }
+    }
+
+    function setupPointerControls() {
+      const element = renderer.domElement;
+
+      element.addEventListener("pointerdown", (event) => {
+        if (!anchorGroup.visible) return;
+        pointerTracking.active = true;
+        pointerTracking.startX = event.clientX;
+        pointerTracking.startRotY = userRotationGroup.rotation.y;
+        element.setPointerCapture(event.pointerId);
+      });
+
+      element.addEventListener("pointermove", (event) => {
+        if (!pointerTracking.active) return;
+        const deltaX = event.clientX - pointerTracking.startX;
+        const rotationDelta = (deltaX / window.innerWidth) * Math.PI;
+        userRotationGroup.rotation.y = pointerTracking.startRotY + rotationDelta;
+      });
+
+      const stopTracking = (event) => {
+        if (!pointerTracking.active) return;
+        pointerTracking.active = false;
+        if (element.hasPointerCapture(event.pointerId)) {
+          element.releasePointerCapture(event.pointerId);
+        }
+      };
+
+      element.addEventListener("pointerup", stopTracking);
+      element.addEventListener("pointercancel", stopTracking);
+      element.addEventListener("pointerleave", (event) => {
+        pointerTracking.active = false;
+        if (event.pointerId && element.hasPointerCapture && element.hasPointerCapture(event.pointerId)) {
+          element.releasePointerCapture(event.pointerId);
+        }
+      });
+    }
+
+    function startRenderLoop() {
+      const animate = (time) => {
+        processFrame();
+        checkTrackingTimeout();
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+    }
+
+    async function initAR() {
+      try {
+        await waitForOpenCvReady();
+        await requestCamera();
+      } catch (error) {
+        throw new Error(`Камера недоступна: ${error.message}`);
+      }
+
+      await new Promise((resolve) => {
+        if (videoEl.readyState >= 2) {
+          resolve();
+        } else {
+          videoEl.onloadedmetadata = () => resolve();
+        }
+      });
+
+      configureForVideoDimensions();
+      setupPointerControls();
+      startRenderLoop();
+      setStatus("idle");
+    }
+
+    function stopStream() {
+      if (!stream) return;
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      stream = null;
+    }
+
+    startButton.addEventListener("click", async () => {
+      permissionErrorEl.style.display = "none";
+      try {
+        await initAR();
+        permissionOverlay.classList.add("hidden");
+      } catch (error) {
+        permissionErrorEl.textContent = error.message;
+        permissionErrorEl.style.display = "block";
+        stopStream();
+      }
+    });
+
+    window.addEventListener("beforeunload", stopStream);
+  </script>
+</body>
+</html>
