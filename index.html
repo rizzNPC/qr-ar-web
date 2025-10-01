@@ -340,8 +340,14 @@
     }
 
     function logDebug(message) {
-      if (debugLogEl.style.display === "none") {
+      try {
         console.log(message);
+      } catch (_error) {
+        /* no-op */
+      }
+      if (!debugLogEl) return;
+      const computedDisplay = getComputedStyle(debugLogEl).display;
+      if (computedDisplay === "none") {
         return;
       }
       const now = new Date().toLocaleTimeString();
@@ -615,12 +621,12 @@
         await modelPromiseCache.get(payload);
       }
 
-      const base = modelCache.get(payload);
-      if (!base) {
+      const cached = modelCache.get(payload);
+      if (!cached) {
         return null;
       }
 
-      const instance = SkeletonUtils.clone(base);
+      const instance = SkeletonUtils.clone(cached);
       prepareModelForAnchor(instance);
       logDebug(`Prepared model for payload ${payload}`);
       return instance;
@@ -655,33 +661,26 @@
       }
 
       if (activePayload !== payload) {
-      setStatus("scanning", payload);
-      if (activePayload) {
+        setStatus("scanning", payload);
+        if (activePayload) {
+          detachModel();
+        }
+        const model = await loadModelForPayload(payload);
+        if (!model) {
+          setStatus("unknown", payload);
+          return;
+        }
         detachModel();
+        userRotationGroup.add(model);
+        userRotationGroup.rotation.set(0, 0, 0);
+        updateUserScale(1);
+        model.updateMatrixWorld(true);
+        logDebug(`Model added with scale ${userRotationGroup.scale.x.toFixed(3)}`);
+        activePayload = payload;
+        setStatus("ready", payload);
+      } else {
+        setStatus("ready", payload);
       }
-      const model = await loadModelForPayload(payload);
-      if (!model) {
-        setStatus("unknown", payload);
-        return;
-      }
-      detachModel();
-      userRotationGroup.add(model);
-      userRotationGroup.rotation.set(0, 0, 0);
-      updateUserScale(1);
-      model.updateMatrixWorld(true);
-      logDebug(`Model added with scale ${userRotationGroup.scale.x.toFixed(3)}`);
-      if (model.traverse) {
-        model.traverse((child) => {
-          if (child.isMesh || child.isSkinnedMesh) {
-            logDebug(`Mesh ${child.name || "(unnamed)"} bounding box: ${JSON.stringify(child.geometry?.boundingBox || {})}`);
-          }
-        });
-      }
-      activePayload = payload;
-      setStatus("ready", payload);
-    } else {
-      setStatus("ready", payload);
-    }
 
       try {
         const pose = estimatePose(code.location, overlayCanvas.width, overlayCanvas.height);
