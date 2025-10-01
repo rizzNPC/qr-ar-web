@@ -30,6 +30,15 @@
       height: 100vh;
       object-fit: contain;
       background: #000;
+      display: block;
+    }
+
+    #camera {
+      z-index: 0;
+    }
+
+    #three-canvas {
+      z-index: 1;
     }
 
     #overlay {
@@ -49,6 +58,7 @@
       line-height: 1.4;
       max-width: 70vw;
       backdrop-filter: blur(6px);
+      z-index: 3;
     }
 
     #hud strong {
@@ -75,7 +85,7 @@
       padding: 32px;
       gap: 16px;
       text-align: center;
-      z-index: 10;
+      z-index: 5;
     }
 
     #permission-overlay.hidden {
@@ -110,6 +120,7 @@
       max-width: 40vw;
       white-space: pre-line;
       display: none; /* Enable for verbose diagnostics */
+      z-index: 4;
     }
 
     /* Instructions for maintainers:
@@ -243,12 +254,14 @@
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
     renderer.domElement.id = "three-canvas";
     renderer.domElement.style.position = "fixed";
     renderer.domElement.style.inset = "0";
     renderer.domElement.style.width = "100vw";
     renderer.domElement.style.height = "100vh";
     renderer.domElement.style.touchAction = "none";
+    renderer.domElement.style.backgroundColor = "transparent";
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -378,6 +391,12 @@
         }
       }
 
+      videoEl.setAttribute("playsinline", "true");
+      videoEl.setAttribute("autoplay", "true");
+      videoEl.setAttribute("muted", "true");
+      videoEl.playsInline = true;
+      videoEl.autoplay = true;
+      videoEl.muted = true;
       videoEl.srcObject = stream;
       await videoEl.play();
     }
