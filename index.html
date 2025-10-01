@@ -150,9 +150,11 @@
     import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
     const OPENCV_CDN_URLS = [
-      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.7.0/build/opencv.js",
-      "https://unpkg.com/@techstark/opencv-js@4.7.0/build/opencv.js",
-      "https://cdn.jsdelivr.net/npm/opencv.js@4.7.0/opencv.js"
+      "https://docs.opencv.org/4.x/opencv.js",
+      "https://rawcdn.githack.com/opencv/opencv/4.9.0/samples/js/opencv.js",
+      "https://fastly.jsdelivr.net/npm/@techstark/opencv-js@4.9.0/opencv.js",
+      "https://fastly.jsdelivr.net/npm/@techstark/opencv-js@4.9.0/opencv.min.js",
+      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@latest/opencv.js"
     ];
 
     let opencvScriptPromise = null;
@@ -168,13 +170,34 @@
           for (const url of OPENCV_CDN_URLS) {
             try {
               await new Promise((resolve, reject) => {
+                const baseUrl = url.slice(0, url.lastIndexOf("/") + 1);
+                const moduleConfig = window.Module || {};
+                const priorLocateFile = moduleConfig.locateFile;
+                moduleConfig.locateFile = (path, prefix) => {
+                  if (typeof priorLocateFile === "function") {
+                    try {
+                      return priorLocateFile(path, prefix);
+                    } catch (_error) {
+                      // fallback to baseUrl path
+                    }
+                  }
+                  return baseUrl + path;
+                };
+                window.Module = moduleConfig;
+
                 const script = document.createElement("script");
                 script.src = url;
                 script.async = true;
-                script.crossOrigin = "anonymous";
                 script.onload = () => resolve();
                 script.onerror = () => {
                   script.remove();
+                  if (window.Module === moduleConfig) {
+                    if (priorLocateFile) {
+                      moduleConfig.locateFile = priorLocateFile;
+                    } else {
+                      delete moduleConfig.locateFile;
+                    }
+                  }
                   reject(new Error(`Не удалось загрузить ${url}`));
                 };
                 document.head.appendChild(script);
