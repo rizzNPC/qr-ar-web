@@ -242,6 +242,11 @@
     // Seconds to wait after last sighting before hiding the model.
     const LOST_TIMEOUT_S = 2.5;
 
+    // Model sizing and interaction parameters.
+    const MODEL_FIT_RATIO = 0.65;
+    const MODEL_MIN_SCALE = 0.4;
+    const MODEL_MAX_SCALE = 2.5;
+
     const videoEl = document.getElementById("camera");
     const overlayCanvas = document.getElementById("overlay");
     const overlayCtx = overlayCanvas.getContext("2d", { willReadFrequently: true });
@@ -285,12 +290,25 @@
     const loader = new GLTFLoader();
     const modelCache = new Map();
     const modelPromiseCache = new Map();
+    const scratchBox = new THREE.Box3();
+    const scratchCenter = new THREE.Vector3();
+    const scratchSize = new THREE.Vector3();
 
     let activePayload = null;
     let lastSeenAt = 0;
     let isProcessingFrame = false;
     let stream = null;
-    let pointerTracking = { active: false, startX: 0, startRotY: 0 };
+    const activePointers = new Map();
+    const pointerTracking = {
+      primaryId: null,
+      startX: 0,
+      startRotY: 0,
+      pinchStartDistance: null,
+      pinchStartScale: 1
+    };
+    const userAdjustments = {
+      scale: 1
+    };
 
     const Status = {
       idle: (payload) => ({ title: "Наведите камеру на QR", detail: payload || "Готово к сканированию" }),
@@ -320,6 +338,32 @@
       if (debugLogEl.style.display === "none") return;
       const now = new Date().toLocaleTimeString();
       debugLogEl.textContent = `${now}: ${message}\n${debugLogEl.textContent}`.slice(0, 1200);
+    }
+
+    function prepareModelForAnchor(root) {
+      if (!root) {
+        return;
+      }
+
+      root.position.set(0, 0, 0);
+      root.rotation.set(0, 0, 0);
+      root.updateMatrixWorld(true);
+
+      scratchBox.setFromObject(root);
+      scratchBox.getSize(scratchSize);
+      const maxDimension = Math.max(scratchSize.x || 0, scratchSize.y || 0, scratchSize.z || 0);
+
+      if (maxDimension > 0) {
+        const targetSize = QR_SIZE_M * MODEL_FIT_RATIO;
+        const scaleFactor = targetSize / maxDimension;
+        root.scale.multiplyScalar(scaleFactor);
+      }
+
+      root.updateMatrixWorld(true);
+      scratchBox.setFromObject(root);
+      scratchBox.getCenter(scratchCenter);
+      root.position.sub(scratchCenter);
+      root.updateMatrixWorld(true);
     }
 
     function waitForOpenCvReady() {
@@ -537,6 +581,7 @@
               child.receiveShadow = false;
             }
           });
+          prepareModelForAnchor(sceneRoot);
           modelCache.set(payload, sceneRoot);
           return sceneRoot;
         }).finally(() => {
@@ -549,6 +594,9 @@
       if (!cached) {
         return null;
       }
+      if (!modelCache.has(payload)) {
+        modelCache.set(payload, cached);
+      }
       return cached.clone(true);
     }
 
@@ -558,6 +606,11 @@
       }
       anchorGroup.visible = false;
       activePayload = null;
+      userRotationGroup.rotation.set(0, 0, 0);
+      userRotationGroup.scale.setScalar(1);
+      userAdjustments.scale = 1;
+      activePointers.clear();
+      resetInteractionBaselines();
     }
 
     async function handleQRCodeDetection(code) {
@@ -577,22 +630,23 @@
 
       if (activePayload !== payload) {
         setStatus("scanning", payload);
-        if (activePayload) {
-          detachModel();
-        }
-        const model = await loadModelForPayload(payload);
-        if (!model) {
-          setStatus("unknown", payload);
-          return;
-        }
+      if (activePayload) {
         detachModel();
-        userRotationGroup.add(model);
-        userRotationGroup.rotation.set(0, 0, 0);
-        activePayload = payload;
-        setStatus("ready", payload);
-      } else {
-        setStatus("ready", payload);
       }
+      const model = await loadModelForPayload(payload);
+      if (!model) {
+        setStatus("unknown", payload);
+        return;
+      }
+      detachModel();
+      userRotationGroup.add(model);
+      userRotationGroup.rotation.set(0, 0, 0);
+      updateUserScale(1);
+      activePayload = payload;
+      setStatus("ready", payload);
+    } else {
+      setStatus("ready", payload);
+    }
 
       try {
         const pose = estimatePose(code.location, overlayCanvas.width, overlayCanvas.height);
@@ -640,39 +694,107 @@
       }
     }
 
+    function clampScale(value) {
+      return Math.min(MODEL_MAX_SCALE, Math.max(MODEL_MIN_SCALE, value));
+    }
+
+    function currentPinchDistance() {
+      if (activePointers.size < 2) {
+        return null;
+      }
+      const points = Array.from(activePointers.values());
+      const a = points[0];
+      const b = points[1];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function updateUserScale(nextScale) {
+      userAdjustments.scale = clampScale(nextScale);
+      userRotationGroup.scale.setScalar(userAdjustments.scale);
+    }
+
+    function resetInteractionBaselines() {
+      pointerTracking.primaryId = null;
+      pointerTracking.pinchStartDistance = null;
+      pointerTracking.pinchStartScale = userAdjustments.scale;
+    }
+
     function setupPointerControls() {
       const element = renderer.domElement;
 
       element.addEventListener("pointerdown", (event) => {
         if (!anchorGroup.visible) return;
-        pointerTracking.active = true;
-        pointerTracking.startX = event.clientX;
-        pointerTracking.startRotY = userRotationGroup.rotation.y;
-        element.setPointerCapture(event.pointerId);
+
+        activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        if (activePointers.size === 1) {
+          pointerTracking.primaryId = event.pointerId;
+          pointerTracking.startX = event.clientX;
+          pointerTracking.startRotY = userRotationGroup.rotation.y;
+          pointerTracking.pinchStartScale = userAdjustments.scale;
+        } else if (activePointers.size === 2) {
+          pointerTracking.pinchStartDistance = currentPinchDistance();
+          pointerTracking.pinchStartScale = userAdjustments.scale;
+        }
+
+        element.setPointerCapture?.(event.pointerId);
       });
 
       element.addEventListener("pointermove", (event) => {
-        if (!pointerTracking.active) return;
-        const deltaX = event.clientX - pointerTracking.startX;
-        const rotationDelta = (deltaX / window.innerWidth) * Math.PI;
-        userRotationGroup.rotation.y = pointerTracking.startRotY + rotationDelta;
+        if (!activePointers.has(event.pointerId)) return;
+
+        activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        if (pointerTracking.primaryId === event.pointerId && activePointers.size === 1) {
+          const deltaX = event.clientX - pointerTracking.startX;
+          const rotationDelta = (deltaX / window.innerWidth) * Math.PI;
+          userRotationGroup.rotation.y = pointerTracking.startRotY + rotationDelta;
+        }
+
+        if (activePointers.size >= 2 && pointerTracking.pinchStartDistance) {
+          const distance = currentPinchDistance();
+          if (distance && pointerTracking.pinchStartDistance > 0) {
+            const scaleFactor = distance / pointerTracking.pinchStartDistance;
+            updateUserScale(pointerTracking.pinchStartScale * scaleFactor);
+          }
+        }
       });
 
-      const stopTracking = (event) => {
-        if (!pointerTracking.active) return;
-        pointerTracking.active = false;
-        if (element.hasPointerCapture(event.pointerId)) {
-          element.releasePointerCapture(event.pointerId);
+      const releasePointer = (event) => {
+        if (!activePointers.has(event.pointerId)) return;
+
+        element.releasePointerCapture?.(event.pointerId);
+        activePointers.delete(event.pointerId);
+
+        if (pointerTracking.primaryId === event.pointerId) {
+          pointerTracking.primaryId = null;
+        }
+
+        if (activePointers.size === 1 && !pointerTracking.primaryId) {
+          const [remainingId, point] = activePointers.entries().next().value;
+          pointerTracking.primaryId = remainingId;
+          pointerTracking.startX = point.x;
+          pointerTracking.startRotY = userRotationGroup.rotation.y;
+        }
+
+        if (activePointers.size < 2) {
+          pointerTracking.pinchStartDistance = null;
+        }
+
+        if (activePointers.size === 0) {
+          resetInteractionBaselines();
         }
       };
 
-      element.addEventListener("pointerup", stopTracking);
-      element.addEventListener("pointercancel", stopTracking);
-      element.addEventListener("pointerleave", (event) => {
-        pointerTracking.active = false;
-        if (event.pointerId && element.hasPointerCapture && element.hasPointerCapture(event.pointerId)) {
-          element.releasePointerCapture(event.pointerId);
-        }
+      element.addEventListener("pointerup", releasePointer);
+      element.addEventListener("pointercancel", releasePointer);
+      element.addEventListener("pointerleave", releasePointer);
+
+      element.addEventListener("dblclick", () => {
+        if (!anchorGroup.visible) return;
+        userRotationGroup.rotation.set(0, 0, 0);
+        updateUserScale(1);
+        resetInteractionBaselines();
       });
     }
 
