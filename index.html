@@ -679,6 +679,8 @@
         pose.tvec.delete();
 
         anchorGroup.matrix.copy(matrix);
+        anchorGroup.matrixWorldNeedsUpdate = true;
+        anchorGroup.updateMatrixWorld(true);
         anchorGroup.visible = true;
       } catch (error) {
         logDebug(`Pose estimation error: ${error.message}`);
