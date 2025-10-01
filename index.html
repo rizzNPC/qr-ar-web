@@ -276,6 +276,7 @@
 
     // Mapping QR payload text -> GLB model URL relative to site root.
     const QR_TO_MODEL = {
+      "test": "TEST_CUBE", // Special keyword for test cube
       "cesiumman": "assets/models/CesiumMan.glb",
       "https://example.com/product/42": "assets/models/product42.glb"
     };
@@ -611,8 +612,24 @@
         return null;
       }
 
+      // Test cube
+      if (QR_TO_MODEL[payload] === "TEST_CUBE") {
+        const geometry = new THREE.BoxGeometry(QR_SIZE_M, QR_SIZE_M, QR_SIZE_M);
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x00ff00,
+          metalness: 0.3,
+          roughness: 0.7
+        });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.position.y = QR_SIZE_M / 2; // Sit on top of QR
+        logDebug(`Created test cube ${QR_SIZE_M}m`);
+        return cube;
+      }
+
       if (modelCache.has(payload)) {
-        return modelCache.get(payload).clone(true);
+        const clone = modelCache.get(payload).clone(true);
+        logDebug(`Cloned cached model for ${payload}`);
+        return clone;
       }
 
       if (!modelPromiseCache.has(payload)) {
@@ -621,12 +638,23 @@
         const url = QR_TO_MODEL[payload];
         const promise = loader.loadAsync(url).then((gltf) => {
           const sceneRoot = gltf.scene || gltf.scenes[0];
+
+          // Log model info
+          const bbox = new THREE.Box3().setFromObject(sceneRoot);
+          const size = new THREE.Vector3();
+          bbox.getSize(size);
+          logDebug(`Model loaded: size=(${size.x.toFixed(3)}, ${size.y.toFixed(3)}, ${size.z.toFixed(3)})`);
+
+          let meshCount = 0;
           sceneRoot.traverse((child) => {
             if (child.isMesh || child.isSkinnedMesh) {
+              meshCount++;
               child.castShadow = false;
               child.receiveShadow = false;
             }
           });
+          logDebug(`Model has ${meshCount} meshes`);
+
           modelCache.set(payload, sceneRoot);
           return sceneRoot;
         }).finally(() => {
@@ -781,6 +809,7 @@
     function updateUserScale(nextScale) {
       userAdjustments.scale = clampScale(nextScale);
       userRotationGroup.scale.setScalar(userAdjustments.scale);
+      logDebug(`Scale updated to ${userAdjustments.scale.toFixed(2)}`);
       if (debugScaleValueEl) {
         debugScaleValueEl.textContent = userAdjustments.scale.toFixed(2);
       }
