@@ -296,9 +296,9 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.155.0/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.155.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.155.0/examples/js/loaders/DRACOLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
     <script>
@@ -353,6 +353,36 @@
             return lowerTrimmed;
         }
 
+        class SimpleKalmanFilter {
+            constructor({ r = 0.01, q = 3 } = {}) {
+                this.r = r;
+                this.q = q;
+                this.a = 1;
+                this.c = 1;
+                this.cov = NaN;
+                this.x = NaN;
+            }
+
+            filter(z) {
+                if (Number.isNaN(this.x)) {
+                    this.x = (1 / this.c) * z;
+                    this.cov = (1 / this.c) * this.q * (1 / this.c);
+                } else {
+                    const predX = this.a * this.x;
+                    const predCov = this.a * this.cov * this.a + this.q;
+                    const k = predCov * this.c * (1 / (this.c * predCov * this.c + this.r));
+                    this.x = predX + k * (z - this.c * predX);
+                    this.cov = predCov - k * this.c * predCov;
+                }
+                return this.x;
+            }
+
+            reset() {
+                this.cov = NaN;
+                this.x = NaN;
+            }
+        }
+
         class ARQRViewer {
             constructor() {
                 this.video = document.getElementById('video');
@@ -375,10 +405,21 @@
                 this.bufferSize = 3;
                 this.consecutiveFailures = 0;
                 this.maxFailures = 2;
+                this.workerBusy = false;
+                this.qrWorker = null;
 
                 // Position smoothing
-                this.lastPosition = null;
-                this.smoothing = 0.4;
+                this.positionFilters = {
+                    x: new SimpleKalmanFilter({ r: 0.005, q: 0.25 }),
+                    y: new SimpleKalmanFilter({ r: 0.005, q: 0.25 }),
+                    z: new SimpleKalmanFilter({ r: 0.01, q: 0.5 })
+                };
+                this.scaleFilter = new SimpleKalmanFilter({ r: 0.005, q: 0.2 });
+                this.renderScene = this.renderScene.bind(this);
+                this.processVideoFrame = this.processVideoFrame.bind(this);
+                this.scanWithRAF = this.scanWithRAF.bind(this);
+                this.renderLoop = null;
+                this.scanLoop = null;
 
                 // GLTF Loader and cache
                 console.log('THREE.GLTFLoader available:', !!THREE.GLTFLoader);
@@ -404,13 +445,19 @@
                 }
                 this.modelCache = {};
                 this.loadingModels = {};
+                this.preloadingModels = new Set();
+                this.statusMessage = '';
 
                 this.init();
             }
 
             async init() {
+                this.loading.textContent = 'Starting camera...';
                 await this.setupCamera();
                 this.setupThreeJS();
+                this.setupQRWorker();
+                this.loading.textContent = 'Preparing assets...';
+                this.preloadModels();
                 this.startScanning();
                 this.loading.style.display = 'none';
             }
@@ -435,8 +482,40 @@
                         };
                     });
                 } catch (err) {
-                    this.info.textContent = 'Camera access denied: ' + err.message;
+                    this.setStatus('Camera access denied: ' + err.message);
                     console.error('Camera error:', err);
+                }
+            }
+
+            setupQRWorker() {
+                if (typeof Worker === 'undefined') {
+                    console.warn('Web Workers not supported, decoding on main thread');
+                    return;
+                }
+
+                try {
+                    this.qrWorker = new Worker('qr-worker.js');
+                    this.qrWorker.onmessage = (event) => {
+                        const { type, result, message } = event.data || {};
+                        if (type === 'result') {
+                            this.workerBusy = false;
+                            this.handleDetection(result);
+                        } else if (type === 'error') {
+                            this.workerBusy = false;
+                            console.error('QR worker error:', message);
+                            this.qrWorker.terminate();
+                            this.qrWorker = null;
+                        }
+                    };
+                    this.qrWorker.onerror = (err) => {
+                        console.error('QR worker crashed:', err);
+                        this.workerBusy = false;
+                        this.qrWorker.terminate();
+                        this.qrWorker = null;
+                    };
+                } catch (error) {
+                    console.error('Failed to initialize QR worker:', error);
+                    this.qrWorker = null;
                 }
             }
 
@@ -450,13 +529,33 @@
                 this.camera.position.z = 0.5;
 
                 // Renderer
+                const webgl2Context = this.canvas3d.getContext('webgl2', {
+                    alpha: true,
+                    antialias: true,
+                    powerPreference: 'high-performance'
+                });
+                const renderingContext = webgl2Context || this.canvas3d.getContext('webgl', {
+                    alpha: true,
+                    antialias: true,
+                    powerPreference: 'high-performance'
+                });
                 this.renderer = new THREE.WebGLRenderer({
                     canvas: this.canvas3d,
+                    context: renderingContext,
                     alpha: true,
                     antialias: true
                 });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+                if (this.renderer.outputColorSpace !== undefined) {
+                    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+                } else if (this.renderer.outputEncoding !== undefined) {
+                    this.renderer.outputEncoding = THREE.sRGBEncoding;
+                }
+                if ('toneMapping' in this.renderer) {
+                    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                    this.renderer.toneMappingExposure = 1.0;
+                }
 
                 // Lights - stronger for GLB models
                 const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
@@ -477,8 +576,25 @@
                     this.renderer.setSize(window.innerWidth, window.innerHeight);
                 });
 
-                // Start render loop
-                this.animate();
+                this.startRenderLoop();
+            }
+
+            preloadModels() {
+                if (!this.gltfLoader) {
+                    return;
+                }
+
+                for (const modelConfig of Object.values(QR_MODEL_MAP)) {
+                    if (modelConfig.type !== 'glb') {
+                        continue;
+                    }
+                    const path = modelConfig.path;
+                    if (this.modelCache[path] || this.preloadingModels.has(path)) {
+                        continue;
+                    }
+                    this.preloadingModels.add(path);
+                    this.loadGLBModel(modelConfig, null);
+                }
             }
 
             cloneGLTF(gltf) {
@@ -560,13 +676,15 @@
                 // Check if already loading
                 if (this.loadingModels[path]) {
                     console.log('Model already loading, adding to queue:', path);
-                    this.loadingModels[path].push({ placeholder, modelConfig });
+                    if (placeholder) {
+                        this.loadingModels[path].push({ placeholder, modelConfig });
+                    }
                     return;
                 }
 
                 // Start loading
                 console.log('Starting to load model:', path);
-                this.loadingModels[path] = [{ placeholder, modelConfig }];
+                this.loadingModels[path] = placeholder ? [{ placeholder, modelConfig }] : [];
 
                 try {
                     this.gltfLoader.load(
@@ -575,11 +693,15 @@
                             console.log('GLB loaded successfully:', path, gltf);
                             const loadedModel = gltf.scene;
                             this.modelCache[path] = loadedModel;
+                            this.preloadingModels.delete(path);
 
                             console.log('Model children:', loadedModel.children);
 
                             // Replace all waiting placeholders
                             for (const waiting of this.loadingModels[path]) {
+                                if (!waiting.placeholder) {
+                                    continue;
+                                }
                                 const clonedModel = this.cloneGLTF(loadedModel);
                                 this.replaceWithLoadedModel(waiting.placeholder, clonedModel, waiting.modelConfig);
                             }
@@ -595,11 +717,13 @@
                         (error) => {
                             console.error('Error loading GLB model:', path, error);
                             delete this.loadingModels[path];
+                            this.preloadingModels.delete(path);
                         }
                     );
                 } catch (error) {
                     console.error('Exception loading GLB model:', path, error);
                     delete this.loadingModels[path];
+                    this.preloadingModels.delete(path);
                 }
             }
 
@@ -656,7 +780,7 @@
                         this.scene.remove(this.model);
                         this.model = null;
                         this.currentQRData = null;
-                        this.lastPosition = null;
+                        this.resetPositionFilters();
                     }
                     return;
                 }
@@ -671,7 +795,7 @@
                     this.model = this.create3DModel(modelConfig);
                     this.scene.add(this.model);
                     this.currentQRData = qrData;
-                    this.lastPosition = null;
+                    this.resetPositionFilters();
                 }
 
                 // Calculate target position
@@ -687,23 +811,12 @@
                 const targetX = centerX * width / 2;
                 const targetY = centerY * height / 2;
                 const targetZ = -distance;
+                const smoothX = this.positionFilters.x.filter(targetX);
+                const smoothY = this.positionFilters.y.filter(targetY);
+                const smoothDistance = this.scaleFilter.filter(distance);
+                const smoothZ = -smoothDistance;
 
-                // Smooth position
-                if (this.lastPosition) {
-                    this.model.position.x = this.lastPosition.x + (targetX - this.lastPosition.x) * this.smoothing;
-                    this.model.position.y = this.lastPosition.y + (targetY - this.lastPosition.y) * this.smoothing;
-                    this.model.position.z = this.lastPosition.z + (targetZ - this.lastPosition.z) * this.smoothing;
-                } else {
-                    this.model.position.x = targetX;
-                    this.model.position.y = targetY;
-                    this.model.position.z = targetZ;
-                }
-
-                this.lastPosition = {
-                    x: this.model.position.x,
-                    y: this.model.position.y,
-                    z: this.model.position.z
-                };
+                this.model.position.set(smoothX, smoothY, smoothZ);
 
                 // Rotate model (works for both simple meshes and GLB models)
                 if (this.model) {
@@ -712,68 +825,131 @@
                 }
             }
 
+            resetPositionFilters() {
+                Object.values(this.positionFilters).forEach(filter => filter.reset());
+                this.scaleFilter.reset();
+            }
+
+            setStatus(message) {
+                if (this.statusMessage === message) {
+                    return;
+                }
+                this.statusMessage = message;
+                this.info.textContent = message;
+            }
+
             startScanning() {
-                const scan = () => {
-                    if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
-                        this.scanCanvas.width = this.video.videoWidth;
-                        this.scanCanvas.height = this.video.videoHeight;
-                        this.scanCtx.drawImage(this.video, 0, 0, this.scanCanvas.width, this.scanCanvas.height);
+                this.setStatus('Scanning for QR codes...');
+                if (typeof this.video.requestVideoFrameCallback === 'function') {
+                    this.video.requestVideoFrameCallback(this.processVideoFrame);
+                } else {
+                    this.scanWithRAF();
+                }
+            }
 
-                        const imageData = this.scanCtx.getImageData(0, 0, this.scanCanvas.width, this.scanCanvas.height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                            inversionAttempts: "attemptBoth" // Try both normal and inverted
-                        });
+            processVideoFrame() {
+                this.scanFrame();
+                if (typeof this.video.requestVideoFrameCallback === 'function') {
+                    this.video.requestVideoFrameCallback(this.processVideoFrame);
+                }
+            }
 
-                        if (code) {
-                            this.consecutiveFailures = 0;
-                            const rawData = code.data.trim();
-                            const qrData = normalizeQRData(rawData);
-                            const qrLocation = {
-                                x: (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2,
-                                y: (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2,
-                                size: Math.abs(code.location.bottomRightCorner.x - code.location.topLeftCorner.x)
-                            };
+            scanWithRAF() {
+                this.scanFrame();
+                this.scanLoop = requestAnimationFrame(this.scanWithRAF);
+            }
 
-                            if (!qrData) {
-                                this.info.textContent = `QR Detected (no payload): ${rawData}`;
-                                requestAnimationFrame(scan);
-                                return;
-                            }
+            scanFrame() {
+                if (this.video.readyState !== this.video.HAVE_ENOUGH_DATA) {
+                    return;
+                }
 
-                            // Add to buffer
-                            this.detectionBuffer.push({ data: qrData, raw: rawData, location: qrLocation });
-                            if (this.detectionBuffer.length > this.bufferSize) {
-                                this.detectionBuffer.shift();
-                            }
+                if (this.scanCanvas.width !== this.video.videoWidth || this.scanCanvas.height !== this.video.videoHeight) {
+                    this.scanCanvas.width = this.video.videoWidth;
+                    this.scanCanvas.height = this.video.videoHeight;
+                }
 
-                            // Get most common detection
-                            const detection = this.getStableDetection();
-                            if (detection) {
-                                this.updateModel(detection.data, detection.location);
-                                this.info.textContent = `QR Detected: ${detection.raw || detection.data}`;
-                            }
-                        } else {
-                            this.consecutiveFailures++;
+                this.scanCtx.drawImage(this.video, 0, 0, this.scanCanvas.width, this.scanCanvas.height);
 
-                            // Clear buffer after consecutive failures
-                            if (this.consecutiveFailures >= this.maxFailures) {
-                                this.detectionBuffer = [];
-                            }
-
-                            // Update model to trigger timeout logic
-                            this.updateModel(null, null);
-
-                            const now = Date.now();
-                            if (now - this.lastQRTime >= this.qrTimeout) {
-                                this.info.textContent = 'Scanning for QR codes...';
-                            }
+                if (this.qrWorker) {
+                    if (this.workerBusy) {
+                        return;
+                    }
+                    let imageData = null;
+                    try {
+                        imageData = this.scanCtx.getImageData(0, 0, this.scanCanvas.width, this.scanCanvas.height);
+                        const transferList = imageData.data && imageData.data.buffer ? [imageData.data.buffer] : undefined;
+                        this.workerBusy = true;
+                        if (!this.currentQRData) {
+                            this.setStatus('Decoding QR frames...');
                         }
+                        this.qrWorker.postMessage({ type: 'decode', imageData }, transferList);
+                        return;
+                    } catch (workerError) {
+                        console.error('Posting frame to worker failed, falling back to main thread:', workerError);
+                        this.workerBusy = false;
+                        if (this.qrWorker) {
+                            this.qrWorker.terminate();
+                            this.qrWorker = null;
+                        }
+                        // Continue to main thread decoding below
+                    }
+                }
+
+                const imageData = this.scanCtx.getImageData(0, 0, this.scanCanvas.width, this.scanCanvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "attemptBoth"
+                });
+                this.handleDetection(code || null);
+            }
+
+            handleDetection(code) {
+                if (code) {
+                    this.consecutiveFailures = 0;
+                    if (!code.data) {
+                        return;
+                    }
+                    const rawData = code.data.trim();
+                    const qrData = normalizeQRData(rawData);
+                    if (!code.location) {
+                        console.warn('QR detection missing location data');
+                        return;
+                    }
+                    const qrLocation = {
+                        x: (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2,
+                        y: (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2,
+                        size: Math.abs(code.location.bottomRightCorner.x - code.location.topLeftCorner.x)
+                    };
+
+                    if (!qrData) {
+                        this.setStatus(`QR Detected (no payload): ${rawData}`);
+                        return;
                     }
 
-                    requestAnimationFrame(scan);
-                };
+                    this.detectionBuffer.push({ data: qrData, raw: rawData, location: qrLocation });
+                    if (this.detectionBuffer.length > this.bufferSize) {
+                        this.detectionBuffer.shift();
+                    }
 
-                scan();
+                    const detection = this.getStableDetection();
+                    if (detection) {
+                        this.updateModel(detection.data, detection.location);
+                        this.setStatus(`QR Detected: ${detection.raw || detection.data}`);
+                    }
+                } else {
+                    this.consecutiveFailures++;
+
+                    if (this.consecutiveFailures >= this.maxFailures) {
+                        this.detectionBuffer = [];
+                    }
+
+                    this.updateModel(null, null);
+
+                    const now = Date.now();
+                    if (now - this.lastQRTime >= this.qrTimeout) {
+                        this.setStatus('Scanning for QR codes...');
+                    }
+                }
             }
 
             getStableDetection() {
@@ -805,8 +981,19 @@
                 return null;
             }
 
-            animate() {
-                requestAnimationFrame(() => this.animate());
+            startRenderLoop() {
+                if (typeof this.renderer.setAnimationLoop === 'function') {
+                    this.renderer.setAnimationLoop(this.renderScene);
+                } else {
+                    const loop = () => {
+                        this.renderScene();
+                        this.renderLoop = requestAnimationFrame(loop);
+                    };
+                    this.renderLoop = requestAnimationFrame(loop);
+                }
+            }
+
+            renderScene() {
                 this.renderer.render(this.scene, this.camera);
             }
         }
