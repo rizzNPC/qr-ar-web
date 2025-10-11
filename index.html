@@ -297,8 +297,8 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/DRACOLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
     <script>
@@ -310,6 +310,48 @@
             'torus': { type: 'torus', color: 0xffff00, size: 0.08 },
             'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.2, color: 0xff0000 }
         };
+
+        function normalizeQRData(rawData) {
+            if (!rawData) return null;
+
+            const trimmed = rawData.trim();
+            if (!trimmed) return null;
+
+            const lowerTrimmed = trimmed.toLowerCase();
+
+            try {
+                const url = new URL(trimmed);
+                const payloadParam = url.searchParams.get('payload');
+                if (payloadParam) {
+                    return payloadParam.trim().toLowerCase();
+                }
+
+                const segments = url.pathname.split('/').filter(Boolean);
+                if (segments.length) {
+                    const lastSegment = segments[segments.length - 1];
+                    if (lastSegment.toLowerCase().startsWith('payload=')) {
+                        const value = lastSegment.slice('payload='.length);
+                        if (value) {
+                            return value.trim().toLowerCase();
+                        }
+                    }
+                }
+            } catch (err) {
+                // Not a URL, fall back to string parsing
+            }
+
+            const payloadIndex = lowerTrimmed.indexOf('payload=');
+            if (payloadIndex !== -1) {
+                const substring = lowerTrimmed.slice(payloadIndex + 'payload='.length);
+                const terminatorIndex = substring.search(/[?#&\s]/);
+                const payloadValue = terminatorIndex === -1 ? substring : substring.slice(0, terminatorIndex);
+                if (payloadValue) {
+                    return payloadValue.trim();
+                }
+            }
+
+            return lowerTrimmed;
+        }
 
         class ARQRViewer {
             constructor() {
@@ -339,6 +381,9 @@
                 this.smoothing = 0.4;
 
                 // GLTF Loader and cache
+                console.log('THREE.GLTFLoader available:', !!THREE.GLTFLoader);
+                console.log('THREE.DRACOLoader available:', !!THREE.DRACOLoader);
+
                 if (THREE.GLTFLoader) {
                     this.gltfLoader = new THREE.GLTFLoader();
 
@@ -346,8 +391,11 @@
                     if (THREE.DRACOLoader) {
                         const dracoLoader = new THREE.DRACOLoader();
                         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+                        dracoLoader.setDecoderConfig({ type: 'js' });
                         this.gltfLoader.setDRACOLoader(dracoLoader);
                         console.log('DRACOLoader configured successfully');
+                    } else {
+                        console.warn('DRACOLoader not available - compressed models may fail to load');
                     }
 
                     console.log('GLTFLoader initialized successfully');
@@ -678,15 +726,22 @@
 
                         if (code) {
                             this.consecutiveFailures = 0;
-                            const qrData = code.data.toLowerCase().trim();
+                            const rawData = code.data.trim();
+                            const qrData = normalizeQRData(rawData);
                             const qrLocation = {
                                 x: (code.location.topLeftCorner.x + code.location.bottomRightCorner.x) / 2,
                                 y: (code.location.topLeftCorner.y + code.location.bottomRightCorner.y) / 2,
                                 size: Math.abs(code.location.bottomRightCorner.x - code.location.topLeftCorner.x)
                             };
 
+                            if (!qrData) {
+                                this.info.textContent = `QR Detected (no payload): ${rawData}`;
+                                requestAnimationFrame(scan);
+                                return;
+                            }
+
                             // Add to buffer
-                            this.detectionBuffer.push({ data: qrData, location: qrLocation });
+                            this.detectionBuffer.push({ data: qrData, raw: rawData, location: qrLocation });
                             if (this.detectionBuffer.length > this.bufferSize) {
                                 this.detectionBuffer.shift();
                             }
@@ -695,7 +750,7 @@
                             const detection = this.getStableDetection();
                             if (detection) {
                                 this.updateModel(detection.data, detection.location);
-                                this.info.textContent = `QR Detected: ${detection.data}`;
+                                this.info.textContent = `QR Detected: ${detection.raw || detection.data}`;
                             }
                         } else {
                             this.consecutiveFailures++;
