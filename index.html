@@ -281,31 +281,8 @@
         <video id="video" autoplay playsinline></video>
         <canvas id="canvas3d"></canvas>
         <canvas id="scanCanvas"></canvas>
-        <div id="info">Scanning for QR codes...</div>
-        <div id="loading">Starting camera...</div>
-        <div id="legend">
-            <h3>Available Models</h3>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #00ff00;"></div>
-                <span>cube</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #ff0000;"></div>
-                <span>sphere</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #0000ff;"></div>
-                <span>pyramid</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: #ffff00;"></div>
-                <span>torus</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: linear-gradient(135deg, #ff0000, #8b0000);"></div>
-                <span>ferrari</span>
-            </div>
-        </div>
+        <div id="info">Сканирование QR-кодов...</div>
+        <div id="loading">Запуск камеры...</div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -437,16 +414,26 @@
 
                 // Position smoothing - improved parameters for smoother tracking
                 this.positionFilters = {
-                    x: new SimpleKalmanFilter({ r: 0.001, q: 0.15 }),
-                    y: new SimpleKalmanFilter({ r: 0.001, q: 0.15 }),
-                    z: new SimpleKalmanFilter({ r: 0.003, q: 0.2 })
+                    x: new SimpleKalmanFilter({ r: 0.0005, q: 0.08 }),
+                    y: new SimpleKalmanFilter({ r: 0.0005, q: 0.08 }),
+                    z: new SimpleKalmanFilter({ r: 0.002, q: 0.12 })
                 };
-                this.scaleFilter = new SimpleKalmanFilter({ r: 0.001, q: 0.12 });
+                this.scaleFilter = new SimpleKalmanFilter({ r: 0.0005, q: 0.08 });
 
-                // Interpolation for smooth transitions
+                // Interpolation for ultra-smooth transitions
                 this.targetPosition = { x: 0, y: 0, z: 0 };
                 this.currentPosition = { x: 0, y: 0, z: 0 };
-                this.lerpFactor = 0.25; // Smooth interpolation factor
+                this.lerpFactor = 0.12; // Very smooth interpolation (lower = smoother)
+
+                // Fade-out animation
+                this.isFadingOut = false;
+                this.fadeOutStartTime = 0;
+                this.fadeOutDuration = 400; // ms for smooth fade-out
+
+                // Scale animation for smooth appearance
+                this.targetScale = 1;
+                this.currentScale = 0;
+                this.scaleLerpFactor = 0.15;
                 this.renderScene = this.renderScene.bind(this);
                 this.processVideoFrame = this.processVideoFrame.bind(this);
                 this.scanWithRAF = this.scanWithRAF.bind(this);
@@ -485,11 +472,11 @@
             }
 
             async init() {
-                this.loading.textContent = 'Starting camera...';
+                this.loading.textContent = 'Запуск камеры...';
                 await this.setupCamera();
                 this.setupThreeJS();
                 this.setupQRWorker();
-                this.loading.textContent = 'Preparing assets...';
+                this.loading.textContent = 'Подготовка ресурсов...';
                 this.preloadModels();
                 this.startScanning();
                 this.loading.style.display = 'none';
@@ -515,7 +502,7 @@
                         };
                     });
                 } catch (err) {
-                    this.setStatus('Camera access denied: ' + err.message);
+                    this.setStatus('Доступ к камере запрещён: ' + err.message);
                     console.error('Camera error:', err);
                 }
             }
@@ -802,9 +789,13 @@
                 const modelConfig = QR_MODEL_MAP[qrData];
 
                 if (!modelConfig) {
-                    // Keep model visible during timeout
+                    // Start fade-out when QR is lost
                     if (this.model && (now - this.lastQRTime) < this.qrTimeout) {
-                        // Continue smooth rotation
+                        if (!this.isFadingOut) {
+                            this.isFadingOut = true;
+                            this.fadeOutStartTime = now;
+                        }
+                        // Continue smooth rotation during fade-out
                         this.model.rotation.y += 0.02;
                         return;
                     }
@@ -812,12 +803,14 @@
                         this.scene.remove(this.model);
                         this.model = null;
                         this.currentQRData = null;
+                        this.isFadingOut = false;
                         this.resetPositionFilters();
                     }
                     return;
                 }
 
                 this.lastQRTime = now;
+                this.isFadingOut = false; // Cancel fade-out if QR is detected again
 
                 // Create model if needed
                 if (this.currentQRData !== qrData) {
@@ -828,6 +821,10 @@
                     this.scene.add(this.model);
                     this.currentQRData = qrData;
                     this.resetPositionFilters();
+
+                    // Start with current camera position for smooth appearance
+                    this.currentPosition = { ...this.targetPosition };
+                    this.currentScale = 0; // Start from scale 0 for smooth grow-in
                 }
 
                 // Calculate target position
@@ -870,6 +867,11 @@
                 // Reset interpolation state
                 this.targetPosition = { x: 0, y: 0, z: 0 };
                 this.currentPosition = { x: 0, y: 0, z: 0 };
+
+                // Reset animation states
+                this.currentScale = 0;
+                this.targetScale = 1;
+                this.isFadingOut = false;
             }
 
             computeNormalizedCoordinates(qrLocation) {
@@ -923,7 +925,7 @@
             }
 
             startScanning() {
-                this.setStatus('Scanning for QR codes...');
+                this.setStatus('Сканирование QR-кодов...');
                 if (typeof this.video.requestVideoFrameCallback === 'function') {
                     this.video.requestVideoFrameCallback(this.processVideoFrame);
                 } else {
@@ -965,7 +967,7 @@
                         const transferList = imageData.data && imageData.data.buffer ? [imageData.data.buffer] : undefined;
                         this.workerBusy = true;
                         if (!this.currentQRData) {
-                            this.setStatus('Decoding QR frames...');
+                            this.setStatus('Декодирование QR-кода...');
                         }
                         this.qrWorker.postMessage({ type: 'decode', imageData }, transferList);
                         return;
@@ -1006,7 +1008,7 @@
                     };
 
                     if (!qrData) {
-                        this.setStatus(`QR Detected (no payload): ${rawData}`);
+                        this.setStatus(`QR-код распознан (нет данных): ${rawData}`);
                         return;
                     }
 
@@ -1018,7 +1020,7 @@
                     const detection = this.getStableDetection();
                     if (detection) {
                         this.updateModel(detection.data, detection.location);
-                        this.setStatus(`QR Detected: ${detection.raw || detection.data}`);
+                        this.setStatus(`QR-код распознан: ${detection.raw || detection.data}`);
                     }
                 } else {
                     this.consecutiveFailures++;
@@ -1031,7 +1033,7 @@
 
                     const now = Date.now();
                     if (now - this.lastQRTime >= this.qrTimeout) {
-                        this.setStatus('Scanning for QR codes...');
+                        this.setStatus('Сканирование QR-кодов...');
                     }
                 }
             }
@@ -1080,7 +1082,9 @@
             renderScene() {
                 // Apply smooth interpolation to model position every frame
                 if (this.model) {
-                    // Linear interpolation (lerp) for smooth motion
+                    const now = Date.now();
+
+                    // Smooth position interpolation
                     this.currentPosition.x += (this.targetPosition.x - this.currentPosition.x) * this.lerpFactor;
                     this.currentPosition.y += (this.targetPosition.y - this.currentPosition.y) * this.lerpFactor;
                     this.currentPosition.z += (this.targetPosition.z - this.currentPosition.z) * this.lerpFactor;
@@ -1091,6 +1095,46 @@
                         this.currentPosition.y,
                         this.currentPosition.z
                     );
+
+                    // Smooth scale animation for appearance
+                    this.currentScale += (this.targetScale - this.currentScale) * this.scaleLerpFactor;
+                    this.model.scale.setScalar(this.currentScale);
+
+                    // Apply fade-out animation
+                    if (this.isFadingOut) {
+                        const elapsed = now - this.fadeOutStartTime;
+                        const fadeProgress = Math.min(elapsed / this.fadeOutDuration, 1);
+                        const opacity = 1 - fadeProgress;
+
+                        this.model.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(mat => {
+                                        mat.transparent = true;
+                                        mat.opacity = opacity;
+                                    });
+                                } else {
+                                    child.material.transparent = true;
+                                    child.material.opacity = opacity;
+                                }
+                            }
+                        });
+                    } else {
+                        // Ensure full opacity when not fading out
+                        this.model.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(mat => {
+                                        mat.transparent = true;
+                                        mat.opacity = 1;
+                                    });
+                                } else {
+                                    child.material.transparent = true;
+                                    child.material.opacity = 1;
+                                }
+                            }
+                        });
+                    }
                 }
 
                 this.renderer.render(this.scene, this.camera);
