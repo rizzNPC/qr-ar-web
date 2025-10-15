@@ -296,19 +296,22 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.155.0/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.155.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.155.0/examples/js/loaders/DRACOLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
-    <script>
+    <script type="module">
+        import * as THREE from './vendor/three/three.module.js';
+        import { GLTFLoader } from './vendor/three/GLTFLoader.js';
+        import { DRACOLoader } from './vendor/three/DRACOLoader.js';
+
         // QR Code to 3D Model mapping
         const QR_MODEL_MAP = {
             'cube': { type: 'cube', color: 0x00ff00, size: 0.1 },
             'sphere': { type: 'sphere', color: 0xff0000, size: 0.08 },
             'pyramid': { type: 'pyramid', color: 0x0000ff, size: 0.1 },
             'torus': { type: 'torus', color: 0xffff00, size: 0.08 },
-            'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.2, color: 0xff0000 }
+            'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.2, color: 0xff0000 },
+            'p0': { type: 'glb', path: 'assets/models/p0_1.glb', scale: 1},
+            'p1': { type: 'glb', path: 'assets/models/p1.glb', scale: 1}
         };
 
         function normalizeQRData(rawData) {
@@ -434,17 +437,18 @@
                 this.scanLoop = null;
 
                 // GLTF Loader and cache
-                console.log('THREE.GLTFLoader available:', !!THREE.GLTFLoader);
-                console.log('THREE.DRACOLoader available:', !!THREE.DRACOLoader);
+                console.log('GLTFLoader available:', !!GLTFLoader);
+                console.log('DRACOLoader available:', !!DRACOLoader);
 
-                if (THREE.GLTFLoader) {
-                    this.gltfLoader = new THREE.GLTFLoader();
+                if (GLTFLoader) {
+                    this.gltfLoader = new GLTFLoader();
 
                     // Setup DRACOLoader for compressed models
-                    if (THREE.DRACOLoader) {
-                        const dracoLoader = new THREE.DRACOLoader();
-                        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-                        dracoLoader.setDecoderConfig({ type: 'js' });
+                    if (DRACOLoader) {
+                        const dracoLoader = new DRACOLoader();
+                        dracoLoader.setDecoderPath('assets/draco/');
+                        dracoLoader.setDecoderConfig({ type: 'wasm' });
+                        dracoLoader.preload();
                         this.gltfLoader.setDRACOLoader(dracoLoader);
                         console.log('DRACOLoader configured successfully');
                     } else {
@@ -811,8 +815,12 @@
                 }
 
                 // Calculate target position
-                const centerX = (qrLocation.x / this.video.videoWidth) * 2 - 1;
-                const centerY = -((qrLocation.y / this.video.videoHeight) * 2 - 1);
+                const normalizedPosition = this.computeNormalizedCoordinates(qrLocation);
+                if (!normalizedPosition) {
+                    return;
+                }
+
+                const { x: centerX, y: centerY } = normalizedPosition;
                 const qrSize = qrLocation.size / this.video.videoWidth;
                 const distance = 0.15 / qrSize;
 
@@ -840,6 +848,48 @@
             resetPositionFilters() {
                 Object.values(this.positionFilters).forEach(filter => filter.reset());
                 this.scaleFilter.reset();
+            }
+
+            computeNormalizedCoordinates(qrLocation) {
+                if (!qrLocation || !this.video || !this.canvas3d) {
+                    return null;
+                }
+
+                const videoWidth = this.video.videoWidth;
+                const videoHeight = this.video.videoHeight;
+                const canvasWidth = this.canvas3d.clientWidth;
+                const canvasHeight = this.canvas3d.clientHeight;
+
+                if (!videoWidth || !videoHeight || !canvasWidth || !canvasHeight) {
+                    return null;
+                }
+
+                const videoAspect = videoWidth / videoHeight;
+                const canvasAspect = canvasWidth / canvasHeight;
+
+                let scale;
+                let offsetX = 0;
+                let offsetY = 0;
+
+                if (canvasAspect > videoAspect) {
+                    // Video scaled to match canvas width; vertical crop occurs
+                    scale = canvasWidth / videoWidth;
+                    const displayedHeight = videoHeight * scale;
+                    offsetY = (displayedHeight - canvasHeight) / 2;
+                } else {
+                    // Video scaled to match canvas height; horizontal crop occurs
+                    scale = canvasHeight / videoHeight;
+                    const displayedWidth = videoWidth * scale;
+                    offsetX = (displayedWidth - canvasWidth) / 2;
+                }
+
+                const screenX = qrLocation.x * scale - offsetX;
+                const screenY = qrLocation.y * scale - offsetY;
+
+                const normalizedX = (screenX / canvasWidth) * 2 - 1;
+                const normalizedY = -((screenY / canvasHeight) * 2 - 1);
+
+                return { x: normalizedX, y: normalizedY };
             }
 
             setStatus(message) {
