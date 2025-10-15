@@ -323,7 +323,11 @@
                 const url = new URL(trimmed);
                 const payloadParam = url.searchParams.get('payload');
                 if (payloadParam) {
-                    return payloadParam.trim().toLowerCase();
+                    const decoded = payloadParam.trim();
+                    if (decoded) {
+                        return decoded.toLowerCase();
+                    }
+                    return null;
                 }
 
                 const segments = url.pathname.split('/').filter(Boolean);
@@ -346,7 +350,15 @@
                 const terminatorIndex = substring.search(/[?#&\s]/);
                 const payloadValue = terminatorIndex === -1 ? substring : substring.slice(0, terminatorIndex);
                 if (payloadValue) {
-                    return payloadValue.trim();
+                    const trimmedValue = payloadValue.trim();
+                    if (!trimmedValue) {
+                        return null;
+                    }
+                    try {
+                        return decodeURIComponent(trimmedValue).toLowerCase();
+                    } catch (decodeError) {
+                        return trimmedValue.toLowerCase();
+                    }
                 }
             }
 
