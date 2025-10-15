@@ -435,13 +435,18 @@
                 this.workerBusy = false;
                 this.qrWorker = null;
 
-                // Position smoothing
+                // Position smoothing - improved parameters for smoother tracking
                 this.positionFilters = {
-                    x: new SimpleKalmanFilter({ r: 0.005, q: 0.25 }),
-                    y: new SimpleKalmanFilter({ r: 0.005, q: 0.25 }),
-                    z: new SimpleKalmanFilter({ r: 0.01, q: 0.5 })
+                    x: new SimpleKalmanFilter({ r: 0.001, q: 0.15 }),
+                    y: new SimpleKalmanFilter({ r: 0.001, q: 0.15 }),
+                    z: new SimpleKalmanFilter({ r: 0.003, q: 0.2 })
                 };
-                this.scaleFilter = new SimpleKalmanFilter({ r: 0.005, q: 0.2 });
+                this.scaleFilter = new SimpleKalmanFilter({ r: 0.001, q: 0.12 });
+
+                // Interpolation for smooth transitions
+                this.targetPosition = { x: 0, y: 0, z: 0 };
+                this.currentPosition = { x: 0, y: 0, z: 0 };
+                this.lerpFactor = 0.25; // Smooth interpolation factor
                 this.renderScene = this.renderScene.bind(this);
                 this.processVideoFrame = this.processVideoFrame.bind(this);
                 this.scanWithRAF = this.scanWithRAF.bind(this);
@@ -799,10 +804,8 @@
                 if (!modelConfig) {
                     // Keep model visible during timeout
                     if (this.model && (now - this.lastQRTime) < this.qrTimeout) {
-                        // Continue rotating even when not detecting
-                        // this.model.rotation.x += 0.01;
-                        this.model.rotation.y += 0.03;
-
+                        // Continue smooth rotation
+                        this.model.rotation.y += 0.02;
                         return;
                     }
                     if (this.model) {
@@ -844,23 +847,29 @@
                 const targetX = centerX * width / 2;
                 const targetY = centerY * height / 2;
                 const targetZ = -distance;
+
+                // Apply Kalman filtering
                 const smoothX = this.positionFilters.x.filter(targetX);
                 const smoothY = this.positionFilters.y.filter(targetY);
                 const smoothDistance = this.scaleFilter.filter(distance);
                 const smoothZ = -smoothDistance;
 
-                this.model.position.set(smoothX, smoothY, smoothZ);
+                // Set target for smooth interpolation (applied in renderScene)
+                this.targetPosition = { x: smoothX, y: smoothY, z: smoothZ };
 
-                // Rotate model (works for both simple meshes and GLB models)
+                // Smooth rotation animation
                 if (this.model) {
-                    // this.model.rotation.x += 0.01;
-                    this.model.rotation.y += 0.03;
+                    this.model.rotation.y += 0.02;
                 }
             }
 
             resetPositionFilters() {
                 Object.values(this.positionFilters).forEach(filter => filter.reset());
                 this.scaleFilter.reset();
+
+                // Reset interpolation state
+                this.targetPosition = { x: 0, y: 0, z: 0 };
+                this.currentPosition = { x: 0, y: 0, z: 0 };
             }
 
             computeNormalizedCoordinates(qrLocation) {
@@ -1069,6 +1078,21 @@
             }
 
             renderScene() {
+                // Apply smooth interpolation to model position every frame
+                if (this.model) {
+                    // Linear interpolation (lerp) for smooth motion
+                    this.currentPosition.x += (this.targetPosition.x - this.currentPosition.x) * this.lerpFactor;
+                    this.currentPosition.y += (this.targetPosition.y - this.currentPosition.y) * this.lerpFactor;
+                    this.currentPosition.z += (this.targetPosition.z - this.currentPosition.z) * this.lerpFactor;
+
+                    // Apply interpolated position
+                    this.model.position.set(
+                        this.currentPosition.x,
+                        this.currentPosition.y,
+                        this.currentPosition.z
+                    );
+                }
+
                 this.renderer.render(this.scene, this.camera);
             }
         }
