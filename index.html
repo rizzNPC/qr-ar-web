@@ -402,7 +402,7 @@
                 this.model = null;
                 this.currentQRData = null;
                 this.lastQRTime = 0;
-                this.qrTimeout = 800; // Keep model 800ms after losing QR
+                this.qrTimeout = 3500; // Keep model 3,5s after losing QR
 
                 // Detection buffer for stability
                 this.detectionBuffer = [];
@@ -428,7 +428,7 @@
                 // Fade-out animation
                 this.isFadingOut = false;
                 this.fadeOutStartTime = 0;
-                this.fadeOutDuration = 400; // ms for smooth fade-out
+                this.fadeOutDuration = 800; // ms for smooth fade-out
 
                 // Scale animation for smooth appearance
                 this.targetScale = 1;
@@ -789,17 +789,30 @@
                 const modelConfig = QR_MODEL_MAP[qrData];
 
                 if (!modelConfig) {
-                    // Start fade-out when QR is lost
-                    if (this.model && (now - this.lastQRTime) < this.qrTimeout) {
-                        if (!this.isFadingOut) {
-                            this.isFadingOut = true;
-                            this.fadeOutStartTime = now;
-                        }
-                        // Continue smooth rotation during fade-out
-                        this.model.rotation.y += 0.02;
-                        return;
-                    }
+                    // Keep model visible for qrTimeout duration, then start fade-out
                     if (this.model) {
+                        const timeSinceLastQR = now - this.lastQRTime;
+
+                        // Still within the delay period - keep model fully visible
+                        if (timeSinceLastQR < this.qrTimeout) {
+                            // Continue smooth rotation
+                            this.model.rotation.y += 0.02;
+                            return;
+                        }
+
+                        // Start fade-out after delay
+                        const fadeStartTime = this.lastQRTime + this.qrTimeout;
+                        if (timeSinceLastQR < this.qrTimeout + this.fadeOutDuration) {
+                            if (!this.isFadingOut) {
+                                this.isFadingOut = true;
+                                this.fadeOutStartTime = fadeStartTime;
+                            }
+                            // Continue smooth rotation during fade-out
+                            this.model.rotation.y += 0.02;
+                            return;
+                        }
+
+                        // Fade-out complete, remove model
                         this.scene.remove(this.model);
                         this.model = null;
                         this.currentQRData = null;
