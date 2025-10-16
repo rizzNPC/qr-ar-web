@@ -403,6 +403,7 @@
                 this.currentQRData = null;
                 this.lastQRTime = 0;
                 this.qrTimeout = 3500; // Keep model 3,5s after losing QR
+                this.baseScale = 1; // Base scale from model config
 
                 // Detection buffer for stability
                 this.detectionBuffer = [];
@@ -833,6 +834,10 @@
                     this.model = this.create3DModel(modelConfig);
                     this.scene.add(this.model);
                     this.currentQRData = qrData;
+
+                    // Save base scale from config
+                    this.baseScale = modelConfig.scale || 1;
+
                     this.resetPositionFilters();
 
                     // Start with current camera position for smooth appearance
@@ -1111,7 +1116,9 @@
 
                     // Smooth scale animation for appearance
                     this.currentScale += (this.targetScale - this.currentScale) * this.scaleLerpFactor;
-                    this.model.scale.setScalar(this.currentScale);
+                    // Apply animation scale as multiplier to base scale
+                    const finalScale = this.baseScale * this.currentScale;
+                    this.model.scale.setScalar(finalScale);
 
                     // Apply fade-out animation
                     if (this.isFadingOut) {
