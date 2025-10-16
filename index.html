@@ -44,7 +44,8 @@
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
+            touch-action: none;
+            /* pointer-events will be set to auto in JS when model is present */
         }
 
         #scanCanvas {
@@ -78,6 +79,8 @@
             letter-spacing: 0.3px;
             transition: all 0.3s ease;
             animation: slideInLeft 0.5s ease-out;
+            white-space: pre-line;
+            max-width: calc(100vw - 80px);
         }
 
         #info::before {
@@ -405,6 +408,17 @@
                 this.qrTimeout = 3500; // Keep model 3,5s after losing QR
                 this.baseScale = 1; // Base scale from model config
 
+                // Touch gesture controls
+                this.userScale = 1; // User-controlled scale via pinch
+                this.userRotation = { x: 0, y: 0, z: 0 }; // User-controlled rotation
+                this.touchState = {
+                    active: false,
+                    startDistance: 0,
+                    startScale: 1,
+                    startRotation: { x: 0, y: 0 },
+                    lastTouches: []
+                };
+
                 // Detection buffer for stability
                 this.detectionBuffer = [];
                 this.bufferSize = 3;
@@ -477,6 +491,7 @@
                 await this.setupCamera();
                 this.setupThreeJS();
                 this.setupQRWorker();
+                this.setupTouchControls();
                 this.loading.textContent = 'Подготовка ресурсов...';
                 this.preloadModels();
                 this.startScanning();
@@ -538,6 +553,73 @@
                     console.error('Failed to initialize QR worker:', error);
                     this.qrWorker = null;
                 }
+            }
+
+            setupTouchControls() {
+                const canvas = this.canvas3d;
+
+                canvas.addEventListener('touchstart', (e) => {
+                    if (!this.model) return;
+                    e.preventDefault();
+
+                    const touches = Array.from(e.touches);
+                    this.touchState.active = true;
+                    this.touchState.lastTouches = touches;
+
+                    if (touches.length === 2) {
+                        // Pinch gesture - save initial distance and scale
+                        const dx = touches[0].clientX - touches[1].clientX;
+                        const dy = touches[0].clientY - touches[1].clientY;
+                        this.touchState.startDistance = Math.sqrt(dx * dx + dy * dy);
+                        this.touchState.startScale = this.userScale;
+                    } else if (touches.length === 1) {
+                        // Pan gesture - save initial rotation
+                        this.touchState.startRotation = { ...this.userRotation };
+                    }
+                }, { passive: false });
+
+                canvas.addEventListener('touchmove', (e) => {
+                    if (!this.model || !this.touchState.active) return;
+                    e.preventDefault();
+
+                    const touches = Array.from(e.touches);
+                    const lastTouches = this.touchState.lastTouches;
+
+                    if (touches.length === 2 && lastTouches.length === 2) {
+                        // Pinch zoom
+                        const dx = touches[0].clientX - touches[1].clientX;
+                        const dy = touches[0].clientY - touches[1].clientY;
+                        const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                        const scale = currentDistance / this.touchState.startDistance;
+                        this.userScale = this.touchState.startScale * scale;
+                        this.userScale = Math.max(0.3, Math.min(3, this.userScale)); // Clamp between 0.3x and 3x
+                    } else if (touches.length === 1 && lastTouches.length === 1) {
+                        // Pan rotation
+                        const deltaX = touches[0].clientX - lastTouches[0].clientX;
+                        const deltaY = touches[0].clientY - lastTouches[0].clientY;
+                        this.userRotation.y += deltaX * 0.01;
+                        this.userRotation.x += deltaY * 0.01;
+                    }
+
+                    this.touchState.lastTouches = touches;
+                }, { passive: false });
+
+                canvas.addEventListener('touchend', (e) => {
+                    if (e.touches.length === 0) {
+                        this.touchState.active = false;
+                        this.touchState.lastTouches = [];
+                    } else {
+                        this.touchState.lastTouches = Array.from(e.touches);
+                    }
+                }, { passive: false });
+
+                canvas.addEventListener('touchcancel', () => {
+                    this.touchState.active = false;
+                    this.touchState.lastTouches = [];
+                });
+
+                // Enable pointer events on canvas
+                canvas.style.pointerEvents = 'auto';
             }
 
             setupThreeJS() {
@@ -796,8 +878,6 @@
 
                         // Still within the delay period - keep model fully visible
                         if (timeSinceLastQR < this.qrTimeout) {
-                            // Continue smooth rotation
-                            this.model.rotation.y += 0.02;
                             return;
                         }
 
@@ -808,8 +888,6 @@
                                 this.isFadingOut = true;
                                 this.fadeOutStartTime = fadeStartTime;
                             }
-                            // Continue smooth rotation during fade-out
-                            this.model.rotation.y += 0.02;
                             return;
                         }
 
@@ -837,6 +915,10 @@
 
                     // Save base scale from config
                     this.baseScale = modelConfig.scale || 1;
+
+                    // Reset user transformations for new model
+                    this.userScale = 1;
+                    this.userRotation = { x: 0, y: 0, z: 0 };
 
                     this.resetPositionFilters();
 
@@ -871,11 +953,6 @@
 
                 // Set target for smooth interpolation (applied in renderScene)
                 this.targetPosition = { x: smoothX, y: smoothY, z: smoothZ };
-
-                // Smooth rotation animation
-                if (this.model) {
-                    this.model.rotation.y += 0.02;
-                }
             }
 
             resetPositionFilters() {
@@ -1038,7 +1115,7 @@
                     const detection = this.getStableDetection();
                     if (detection) {
                         this.updateModel(detection.data, detection.location);
-                        this.setStatus(`QR-код распознан: ${detection.raw || detection.data}`);
+                        this.setStatus(`QR-код распознан: ${detection.raw || detection.data}\n💡 Используйте жесты: щипок для масштаба, свайп для поворота`);
                     }
                 } else {
                     this.consecutiveFailures++;
@@ -1116,9 +1193,14 @@
 
                     // Smooth scale animation for appearance
                     this.currentScale += (this.targetScale - this.currentScale) * this.scaleLerpFactor;
-                    // Apply animation scale as multiplier to base scale
-                    const finalScale = this.baseScale * this.currentScale;
+                    // Apply animation scale as multiplier to base scale and user scale
+                    const finalScale = this.baseScale * this.currentScale * this.userScale;
                     this.model.scale.setScalar(finalScale);
+
+                    // Apply user rotation
+                    this.model.rotation.x = this.userRotation.x;
+                    this.model.rotation.y = this.userRotation.y;
+                    this.model.rotation.z = this.userRotation.z;
 
                     // Apply fade-out animation
                     if (this.isFadingOut) {
