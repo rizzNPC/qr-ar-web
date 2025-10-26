@@ -509,7 +509,9 @@
                     startDistance: 0,
                     startScale: 1,
                     startRotation: { x: 0, y: 0 },
-                    lastTouches: []
+                    lastTouches: [],
+                    startPos: null, // Track start position for tap detection
+                    moved: false // Track if finger moved during touch
                 };
 
                 // Detection buffer for stability
@@ -689,16 +691,22 @@
                     const touches = Array.from(e.touches);
                     this.touchState.active = true;
                     this.touchState.lastTouches = touches;
+                    this.touchState.moved = false; // Reset moved flag
 
-                    if (touches.length === 2) {
+                    if (touches.length === 1) {
+                        // Single touch - save start position for tap detection
+                        this.touchState.startPos = {
+                            x: touches[0].clientX,
+                            y: touches[0].clientY
+                        };
+                        this.touchState.startRotation = { ...this.userRotation };
+                    } else if (touches.length === 2) {
                         // Pinch gesture - save initial distance and scale
+                        this.touchState.startPos = null; // Not a tap
                         const dx = touches[0].clientX - touches[1].clientX;
                         const dy = touches[0].clientY - touches[1].clientY;
                         this.touchState.startDistance = Math.sqrt(dx * dx + dy * dy);
                         this.touchState.startScale = this.userScale;
-                    } else if (touches.length === 1) {
-                        // Pan gesture - save initial rotation
-                        this.touchState.startRotation = { ...this.userRotation };
                     }
                 }, { passive: false });
 
@@ -708,6 +716,16 @@
 
                     const touches = Array.from(e.touches);
                     const lastTouches = this.touchState.lastTouches;
+
+                    // Check if moved significantly (for tap detection)
+                    if (this.touchState.startPos && touches.length === 1) {
+                        const dx = touches[0].clientX - this.touchState.startPos.x;
+                        const dy = touches[0].clientY - this.touchState.startPos.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance > 10) { // 10px threshold
+                            this.touchState.moved = true;
+                        }
+                    }
 
                     if (touches.length === 2 && lastTouches.length === 2) {
                         // Pinch zoom
@@ -740,6 +758,8 @@
                 canvas.addEventListener('touchcancel', () => {
                     this.touchState.active = false;
                     this.touchState.lastTouches = [];
+                    this.touchState.startPos = null;
+                    this.touchState.moved = false;
                 });
 
                 // Enable pointer events on canvas
@@ -747,8 +767,21 @@
             }
 
             setupClickHandler() {
-                this.canvas3d.addEventListener('click', (event) => {
-                    console.log('👆 Canvas clicked');
+                const handleTap = (event) => {
+                    console.log('👆 Canvas tapped/clicked, type:', event.type);
+
+                    // For touch events, check if it was a real tap (not a drag)
+                    if (event.type === 'touchend') {
+                        if (this.touchState.moved) {
+                            console.log('   ⚠️ Touch was a drag, not a tap');
+                            return;
+                        }
+                        // Only proceed if we have startPos (single touch) and didn't move
+                        if (!this.touchState.startPos) {
+                            console.log('   ⚠️ Multi-touch or no start position');
+                            return;
+                        }
+                    }
 
                     if (!this.model) {
                         console.log('   ⚠️ No model');
@@ -762,12 +795,23 @@
 
                     console.log('   ✅ Cookie model found');
 
+                    // Get coordinates from event (touch or mouse)
+                    let clientX, clientY;
+                    if (event.type === 'touchend') {
+                        // Use start position for touch (where tap began)
+                        clientX = this.touchState.startPos.x;
+                        clientY = this.touchState.startPos.y;
+                    } else {
+                        clientX = event.clientX;
+                        clientY = event.clientY;
+                    }
+
                     // Calculate mouse position in normalized device coordinates (-1 to +1)
                     const rect = this.canvas3d.getBoundingClientRect();
-                    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-                    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                    this.mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+                    this.mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
-                    console.log('   🖱️ Mouse coords:', this.mouse.x.toFixed(2), this.mouse.y.toFixed(2));
+                    console.log('   🖱️ Tap coords:', this.mouse.x.toFixed(2), this.mouse.y.toFixed(2));
 
                     // Update raycaster
                     this.raycaster.setFromCamera(this.mouse, this.camera);
@@ -778,12 +822,21 @@
                     console.log('   🎯 Intersects found:', intersects.length);
 
                     if (intersects.length > 0 && !this.fortuneShown) {
-                        console.log('   ✅ Cookie clicked! Showing fortune');
+                        console.log('   ✅ Cookie tapped! Showing fortune');
                         this.showFortune();
                     } else if (intersects.length > 0 && this.fortuneShown) {
-                        console.log('   ⚠️ Cookie clicked but fortune already shown');
+                        console.log('   ⚠️ Cookie tapped but fortune already shown');
+                    } else if (intersects.length === 0) {
+                        console.log('   ⚠️ Tap missed the cookie');
                     }
-                });
+                };
+
+                // Support both touch and click events
+                this.canvas3d.addEventListener('click', handleTap);
+                this.canvas3d.addEventListener('touchend', (event) => {
+                    // Don't prevent default here - let touch controls handle it
+                    handleTap(event);
+                }, { passive: true });
             }
 
             getRandomFortune() {
