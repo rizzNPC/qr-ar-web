@@ -580,6 +580,11 @@
                 this.objLoader = new OBJLoader();
                 this.textureLoader = new THREE.TextureLoader();
 
+                // Detect mobile device for texture optimization
+                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                this.maxTextureSize = this.isMobile ? 1024 : 2048; // Smaller textures on mobile
+                console.log('🔍 Device type:', this.isMobile ? 'Mobile' : 'Desktop', 'Max texture size:', this.maxTextureSize);
+
                 // Fortune prediction state
                 this.fortuneElement = document.getElementById('fortune');
                 this.fortuneTextElement = document.querySelector('.fortune-text');
@@ -1196,18 +1201,66 @@
                 }
             }
 
+            loadOptimizedTexture(url, onLoad, onError) {
+                const loader = this.textureLoader;
+                const maxSize = this.maxTextureSize;
+
+                return loader.load(
+                    url,
+                    (texture) => {
+                        // Get image dimensions
+                        const image = texture.image;
+                        const width = image.width;
+                        const height = image.height;
+
+                        console.log(`📏 Original texture size: ${width}x${height}`);
+
+                        // Resize if needed
+                        if (width > maxSize || height > maxSize) {
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+
+                            // Calculate new size maintaining aspect ratio
+                            const scale = Math.min(maxSize / width, maxSize / height);
+                            canvas.width = Math.floor(width * scale);
+                            canvas.height = Math.floor(height * scale);
+
+                            console.log(`📐 Resizing to: ${canvas.width}x${canvas.height}`);
+
+                            // Draw resized image
+                            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+                            // Create new texture from canvas
+                            const resizedTexture = new THREE.CanvasTexture(canvas);
+                            resizedTexture.needsUpdate = true;
+
+                            console.log(`✅ Texture resized and optimized`);
+                            if (onLoad) onLoad(resizedTexture);
+                            return resizedTexture;
+                        }
+
+                        console.log(`✅ Texture loaded (no resize needed)`);
+                        if (onLoad) onLoad(texture);
+                        return texture;
+                    },
+                    undefined,
+                    onError
+                );
+            }
+
             async loadOBJModel(modelConfig, placeholder) {
                 const path = modelConfig.path;
-                console.log('loadOBJModel called with path:', path);
+                console.log('🔄 loadOBJModel called with path:', path);
 
                 if (!this.objLoader) {
-                    console.error('OBJLoader not available!');
+                    console.error('❌ OBJLoader not available!');
+                    this.setStatus('Ошибка: OBJLoader недоступен');
                     return;
                 }
 
                 // Check if already loading
                 if (this.loadingModels[path]) {
-                    console.log('OBJ Model already loading, adding to queue:', path);
+                    console.log('⏳ OBJ Model already loading, adding to queue:', path);
                     if (placeholder) {
                         this.loadingModels[path].push({ placeholder, modelConfig });
                     }
@@ -1215,20 +1268,53 @@
                 }
 
                 // Start loading
-                console.log('Starting to load OBJ model:', path);
+                console.log('🚀 Starting to load OBJ model:', path);
+                this.setStatus('Загрузка модели печеньки...');
                 this.loadingModels[path] = placeholder ? [{ placeholder, modelConfig }] : [];
 
                 try {
                     this.objLoader.load(
                         path,
                         (object) => {
-                            console.log('OBJ loaded successfully:', path, object);
+                            console.log('✅ OBJ loaded successfully:', path, object);
 
-                            // Apply textures
-                            const textureLoader = this.textureLoader;
-                            const texture = modelConfig.texture ? textureLoader.load(modelConfig.texture) : null;
-                            const normalMap = modelConfig.normalMap ? textureLoader.load(modelConfig.normalMap) : null;
-                            const aoMap = modelConfig.aoMap ? textureLoader.load(modelConfig.aoMap) : null;
+                            // Apply textures with optimization for mobile
+                            let texture = null;
+                            let normalMap = null;
+                            let aoMap = null;
+
+                            if (modelConfig.texture) {
+                                console.log('📸 Loading texture:', modelConfig.texture);
+                                texture = this.loadOptimizedTexture(
+                                    modelConfig.texture,
+                                    () => console.log('✅ Texture loaded:', modelConfig.texture),
+                                    (err) => console.error('❌ Texture load error:', modelConfig.texture, err)
+                                );
+                            }
+
+                            if (modelConfig.normalMap && !this.isMobile) {
+                                // Skip normal map on mobile to save memory
+                                console.log('🗺️ Loading normal map:', modelConfig.normalMap);
+                                normalMap = this.loadOptimizedTexture(
+                                    modelConfig.normalMap,
+                                    () => console.log('✅ Normal map loaded:', modelConfig.normalMap),
+                                    (err) => console.error('❌ Normal map load error:', modelConfig.normalMap, err)
+                                );
+                            } else if (this.isMobile) {
+                                console.log('⚠️ Skipping normal map on mobile to save memory');
+                            }
+
+                            if (modelConfig.aoMap && !this.isMobile) {
+                                // Skip AO map on mobile to save memory
+                                console.log('🌑 Loading AO map:', modelConfig.aoMap);
+                                aoMap = this.loadOptimizedTexture(
+                                    modelConfig.aoMap,
+                                    () => console.log('✅ AO map loaded:', modelConfig.aoMap),
+                                    (err) => console.error('❌ AO map load error:', modelConfig.aoMap, err)
+                                );
+                            } else if (this.isMobile) {
+                                console.log('⚠️ Skipping AO map on mobile to save memory');
+                            }
 
                             object.traverse((child) => {
                                 if (child.isMesh) {
@@ -1238,9 +1324,11 @@
                                         aoMap: aoMap,
                                         aoMapIntensity: 1.0,
                                         metalness: 0.1,
-                                        roughness: 0.8
+                                        roughness: 0.8,
+                                        color: 0xffffff // Ensure white base color
                                     });
                                     child.material = material;
+                                    console.log('🎨 Material applied to mesh:', child.name);
                                 }
                             });
 
@@ -1249,7 +1337,8 @@
                             this.modelCache[path] = loadedModel;
                             this.preloadingModels.delete(path);
 
-                            console.log('OBJ Model processed with textures');
+                            console.log('✅ OBJ Model processed with textures');
+                            this.setStatus('Модель печеньки загружена!');
 
                             // Replace all waiting placeholders
                             for (const waiting of this.loadingModels[path]) {
@@ -1266,56 +1355,78 @@
                         (xhr) => {
                             if (xhr.total > 0) {
                                 const percent = (xhr.loaded / xhr.total) * 100;
-                                console.log(`Loading OBJ ${path}: ${percent.toFixed(0)}%`);
+                                console.log(`⏳ Loading OBJ ${path}: ${percent.toFixed(0)}%`);
+                                this.setStatus(`Загрузка модели: ${percent.toFixed(0)}%`);
                             }
                         },
                         (error) => {
-                            console.error('Error loading OBJ model:', path, error);
+                            console.error('❌ Error loading OBJ model:', path, error);
+                            console.error('Error details:', {
+                                message: error.message,
+                                stack: error.stack,
+                                name: error.name
+                            });
+                            this.setStatus('Ошибка загрузки модели: ' + error.message);
                             delete this.loadingModels[path];
                             this.preloadingModels.delete(path);
                         }
                     );
                 } catch (error) {
-                    console.error('Exception loading OBJ model:', path, error);
+                    console.error('❌ Exception loading OBJ model:', path, error);
+                    console.error('Exception details:', {
+                        message: error.message,
+                        stack: error.stack,
+                        name: error.name
+                    });
+                    this.setStatus('Критическая ошибка: ' + error.message);
                     delete this.loadingModels[path];
                     this.preloadingModels.delete(path);
                 }
             }
 
             replaceWithLoadedModel(placeholder, loadedModel, modelConfig) {
-                console.log('replaceWithLoadedModel called', {
+                console.log('🔄 replaceWithLoadedModel called', {
                     hasParent: !!placeholder.parent,
                     scale: modelConfig.scale,
-                    isCurrentModel: this.model === placeholder
+                    isCurrentModel: this.model === placeholder,
+                    modelType: loadedModel.userData?.modelType
                 });
 
                 if (!placeholder.parent) {
-                    console.warn('Placeholder has no parent, cannot replace');
+                    console.warn('⚠️ Placeholder has no parent, cannot replace');
                     return;
                 }
 
                 // Apply scale
                 if (modelConfig.scale) {
                     loadedModel.scale.set(modelConfig.scale, modelConfig.scale, modelConfig.scale);
+                    console.log('📏 Scale applied:', modelConfig.scale);
                 }
 
                 // Copy position and rotation from placeholder
                 loadedModel.position.copy(placeholder.position);
                 loadedModel.rotation.copy(placeholder.rotation);
 
-                console.log('Model position:', loadedModel.position);
-                console.log('Model scale:', loadedModel.scale);
+                console.log('📍 Model position:', loadedModel.position);
+                console.log('📐 Model scale:', loadedModel.scale);
 
                 // Replace in scene
                 placeholder.parent.add(loadedModel);
                 placeholder.parent.remove(placeholder);
 
-                console.log('Model added to scene, placeholder removed');
+                console.log('✅ Model added to scene, placeholder removed');
 
                 // Update reference if this is current model
                 if (this.model === placeholder) {
                     this.model = loadedModel;
-                    console.log('Updated current model reference');
+                    console.log('✅ Updated current model reference');
+
+                    // Verify model is visible
+                    console.log('🔍 Model visibility check:', {
+                        visible: loadedModel.visible,
+                        childrenCount: loadedModel.children.length,
+                        meshCount: loadedModel.children.filter(c => c.isMesh).length
+                    });
                 }
             }
 
