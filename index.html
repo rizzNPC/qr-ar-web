@@ -255,6 +255,58 @@
             }
         }
 
+        /* Fortune prediction styles */
+        #fortune {
+            position: absolute;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%) translateX(0);
+            z-index: 15;
+            transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.6s ease;
+            opacity: 1;
+        }
+
+        #fortune.fortune-hidden {
+            transform: translateY(-50%) translateX(calc(100% + 40px));
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .fortune-content {
+            background: #ffffff;
+            padding: 24px 28px;
+            border-radius: 16px;
+            box-shadow:
+                0 12px 40px rgba(0, 0, 0, 0.25),
+                0 4px 12px rgba(0, 0, 0, 0.15),
+                -8px 0 24px rgba(0, 0, 0, 0.08);
+            max-width: 280px;
+            position: relative;
+        }
+
+        .fortune-content::before {
+            content: '';
+            position: absolute;
+            left: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 12px 20px 12px 0;
+            border-color: transparent #ffffff transparent transparent;
+            filter: drop-shadow(-3px 0 4px rgba(0, 0, 0, 0.1));
+        }
+
+        .fortune-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a2e;
+            line-height: 1.6;
+            text-align: center;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             #info {
@@ -275,6 +327,19 @@
                 padding: 24px 36px;
                 font-size: 14px;
             }
+
+            #fortune {
+                right: 12px;
+            }
+
+            .fortune-content {
+                max-width: 240px;
+                padding: 20px 24px;
+            }
+
+            .fortune-text {
+                font-size: 14px;
+            }
         }
     </style>
 </head>
@@ -286,6 +351,11 @@
         <canvas id="scanCanvas"></canvas>
         <div id="info">Сканирование QR-кодов...</div>
         <div id="loading">Запуск камеры...</div>
+        <div id="fortune" class="fortune-hidden">
+            <div class="fortune-content">
+                <div class="fortune-text"></div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -294,6 +364,7 @@
         import * as THREE from './vendor/three/three.module.js';
         import { GLTFLoader } from './vendor/three/GLTFLoader.js';
         import { DRACOLoader } from './vendor/three/DRACOLoader.js';
+        import { OBJLoader } from './vendor/three/OBJLoader.js';
 
         // QR Code to 3D Model mapping
         const QR_MODEL_MAP = {
@@ -303,8 +374,30 @@
             'torus': { type: 'torus', color: 0xffff00, size: 0.08 },
             'ferrari': { type: 'glb', path: 'assets/models/ferrari.glb', scale: 0.2, color: 0xff0000 },
             'p0': { type: 'glb', path: 'assets/models/p0_1.glb', scale: 0.4 },
-            'p1': { type: 'glb', path: 'assets/models/p1.glb', scale: 0.4 }
+            'p1': { type: 'glb', path: 'assets/models/p1.glb', scale: 0.4 },
+            'coockie': {
+                type: 'obj',
+                path: 'assets/coockie_model/1.obj',
+                texture: 'assets/coockie_model/model.jpg',
+                normalMap: 'assets/coockie_model/model_normal.jpg',
+                aoMap: 'assets/coockie_model/model_occlusion.jpg',
+                scale: 0.01
+            }
         };
+
+        // Fortune predictions for cookie
+        const FORTUNE_PREDICTIONS = [
+            'Ваше терпение скоро принесёт плоды',
+            'Новые возможности откроются перед вами',
+            'Успех приходит к тем, кто не сдаётся',
+            'Доверяйте своей интуиции',
+            'Скоро произойдёт приятная встреча',
+            'Ваши старания будут вознаграждены',
+            'Перемены к лучшему уже на пороге',
+            'Смелость - ключ к вашим целям',
+            'Удача улыбнётся вам сегодня',
+            'Верьте в себя и всё получится'
+        ];
 
         function normalizeQRData(rawData) {
             if (!rawData) return null;
@@ -483,6 +576,31 @@
                 this.preloadingModels = new Set();
                 this.statusMessage = '';
 
+                // OBJ Loader for cookie model
+                this.objLoader = new OBJLoader();
+                this.textureLoader = new THREE.TextureLoader();
+
+                // Fortune prediction state
+                this.fortuneElement = document.getElementById('fortune');
+                this.fortuneTextElement = document.querySelector('.fortune-text');
+                this.currentFortune = null;
+                this.fortuneShown = false;
+                this.fortunePaper = null; // 3D plane for fortune text
+
+                // Raycaster for click detection
+                this.raycaster = new THREE.Raycaster();
+                this.mouse = new THREE.Vector2();
+
+                // Animation state
+                this.idleAnimationTime = 0;
+                this.tapAnimationProgress = 0;
+                this.isTapAnimating = false;
+                this.paperAnimationProgress = 0;
+                this.cookieOpened = false; // State after tap - cookie stays "opened"
+                this.paperShouldAnimate = false; // Separate flag for paper animation start
+                this.finalTapRotation = { x: 0, y: 0 }; // Store final rotation from tap animation
+                this.postPaperTransitionProgress = 0; // Smooth transition from freeze to idle after paper
+
                 this.init();
             }
 
@@ -492,6 +610,7 @@
                 this.setupThreeJS();
                 this.setupQRWorker();
                 this.setupTouchControls();
+                this.setupClickHandler();
                 this.loading.textContent = 'Подготовка ресурсов...';
                 this.preloadModels();
                 this.startScanning();
@@ -622,9 +741,223 @@
                 canvas.style.pointerEvents = 'auto';
             }
 
+            setupClickHandler() {
+                this.canvas3d.addEventListener('click', (event) => {
+                    console.log('👆 Canvas clicked');
+
+                    if (!this.model) {
+                        console.log('   ⚠️ No model');
+                        return;
+                    }
+
+                    if (this.model.userData.modelType !== 'coockie') {
+                        console.log('   ⚠️ Not a cookie model:', this.model.userData.modelType);
+                        return;
+                    }
+
+                    console.log('   ✅ Cookie model found');
+
+                    // Calculate mouse position in normalized device coordinates (-1 to +1)
+                    const rect = this.canvas3d.getBoundingClientRect();
+                    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                    console.log('   🖱️ Mouse coords:', this.mouse.x.toFixed(2), this.mouse.y.toFixed(2));
+
+                    // Update raycaster
+                    this.raycaster.setFromCamera(this.mouse, this.camera);
+
+                    // Check for intersections with the model
+                    const intersects = this.raycaster.intersectObject(this.model, true);
+
+                    console.log('   🎯 Intersects found:', intersects.length);
+
+                    if (intersects.length > 0 && !this.fortuneShown) {
+                        console.log('   ✅ Cookie clicked! Showing fortune');
+                        this.showFortune();
+                    } else if (intersects.length > 0 && this.fortuneShown) {
+                        console.log('   ⚠️ Cookie clicked but fortune already shown');
+                    }
+                });
+            }
+
+            getRandomFortune() {
+                const randomIndex = Math.floor(Math.random() * FORTUNE_PREDICTIONS.length);
+                return FORTUNE_PREDICTIONS[randomIndex];
+            }
+
+            createTextTexture(text) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 2048;
+                canvas.height = 1024;
+                const ctx = canvas.getContext('2d');
+
+                // Background - чистый белый как бумага
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Лёгкая текстура бумаги (опционально)
+                ctx.fillStyle = '#fafafa';
+                for (let i = 0; i < 100; i++) {
+                    ctx.fillRect(
+                        Math.random() * canvas.width,
+                        Math.random() * canvas.height,
+                        1, 1
+                    );
+                }
+
+                // Text styling - ОГРОМНЫЙ текст
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 140px Arial, sans-serif'; // MASSIVE!
+                ctx.textAlign = 'left'; // Left align for padding
+                ctx.textBaseline = 'middle';
+
+                // Left padding - space for cookie overlap
+                const leftPadding = 950; // Almost half canvas width for cookie space
+                const rightPadding = 150;
+
+                // Word wrap
+                const maxWidth = canvas.width - leftPadding - rightPadding;
+                const words = text.split(' ');
+                const lines = [];
+                let currentLine = words[0];
+
+                for (let i = 1; i < words.length; i++) {
+                    const word = words[i];
+                    const testLine = currentLine + ' ' + word;
+                    const width = ctx.measureText(testLine).width;
+                    if (width < maxWidth) {
+                        currentLine = testLine;
+                    } else {
+                        lines.push(currentLine);
+                        currentLine = word;
+                    }
+                }
+                lines.push(currentLine);
+
+                // Draw lines with left padding
+                const lineHeight = 160;
+                const totalHeight = lines.length * lineHeight;
+                const startY = (canvas.height - totalHeight) / 2 + lineHeight / 2;
+
+                lines.forEach((line, index) => {
+                    ctx.fillText(line, leftPadding, startY + index * lineHeight);
+                });
+
+                console.log('✅ Text texture created:', text, 'Lines:', lines.length, 'Font: 140px BOLD');
+
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.needsUpdate = true;
+                return texture;
+            }
+
+            create3DFortunePaper(text) {
+                console.log('📄 Creating 3D fortune paper with text:', text);
+
+                const texture = this.createTextTexture(text);
+
+                // Create paper group
+                const paperGroup = new THREE.Group();
+                paperGroup.userData.isPaper = true;
+
+                // Main paper plane - width 0.8, smaller height to match cookie
+                const geometry = new THREE.PlaneGeometry(0.8, 0.25);
+                const material = new THREE.MeshStandardMaterial({
+                    map: texture,
+                    side: THREE.DoubleSide,
+                    color: 0xffffff,
+                    transparent: false,
+                    roughness: 0.8,
+                    metalness: 0.1
+                });
+
+                const paper = new THREE.Mesh(geometry, material);
+                paperGroup.add(paper);
+
+                // Shadow plane (тень от печеньки)
+                const shadowGeometry = new THREE.PlaneGeometry(0.8, 0.25);
+                const shadowMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x000000,
+                    transparent: true,
+                    opacity: 0.3,
+                    side: THREE.DoubleSide
+                });
+                const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+                shadow.position.z = -0.002; // Slightly behind paper
+                shadow.position.x = -0.01; // Offset for shadow effect
+                shadow.position.y = -0.01;
+                paperGroup.add(shadow);
+
+                console.log('✅ 3D Fortune paper created: 0.8 x 0.25 with shadow');
+
+                return paperGroup;
+            }
+
+            showFortune() {
+                if (this.fortuneShown) {
+                    console.log('⚠️ Fortune already shown, ignoring');
+                    return;
+                }
+
+                console.log('🎯 showFortune() called');
+
+                this.fortuneShown = true;
+                this.currentFortune = this.getRandomFortune();
+
+                console.log('🎲 Random fortune selected:', this.currentFortune);
+
+                // Create 3D paper with fortune text
+                this.fortunePaper = this.create3DFortunePaper(this.currentFortune);
+
+                // Position paper at cookie center initially (will animate out)
+                if (this.model) {
+                    this.fortunePaper.position.copy(this.model.position);
+                    console.log('📍 Paper positioned at cookie:', this.model.position);
+                } else {
+                    console.error('❌ No model found! Paper not positioned');
+                }
+
+                this.scene.add(this.fortunePaper);
+                console.log('➕ Paper added to scene');
+                console.log('📊 Scene children count:', this.scene.children.length);
+
+                // Start tap animation
+                this.isTapAnimating = true;
+                this.tapAnimationProgress = 0;
+                this.paperAnimationProgress = 0;
+
+                console.log('🚀 Animation started: tap=true, progress=0');
+
+                // Hide 2D UI element
+                this.fortuneElement.classList.add('fortune-hidden');
+            }
+
+            hideFortune() {
+                if (this.fortunePaper) {
+                    this.scene.remove(this.fortunePaper);
+                    this.fortunePaper = null;
+                }
+
+                this.fortuneShown = false;
+                this.currentFortune = null;
+                this.paperAnimationProgress = 0;
+                this.paperShouldAnimate = false;
+                this.isTapAnimating = false;
+                this.tapAnimationProgress = 0;
+                this.cookieOpened = false;
+                this.idleAnimationTime = 0;
+                this.postPaperTransitionProgress = 0;
+                this.finalTapRotation = { x: 0, y: 0 };
+
+                console.log('🧹 Fortune hidden, cookie state reset');
+            }
+
             setupThreeJS() {
                 // Scene
                 this.scene = new THREE.Scene();
+
+                // Clock for accurate deltaTime
+                this.clock = new THREE.Clock();
 
                 // Camera
                 const aspect = window.innerWidth / window.innerHeight;
@@ -749,6 +1082,29 @@
                     return placeholder;
                 }
 
+                if (modelConfig.type === 'obj') {
+                    console.log('Creating OBJ model:', modelConfig);
+                    const path = modelConfig.path;
+
+                    // If already in cache, return cloned model immediately
+                    if (this.modelCache[path]) {
+                        console.log('OBJ model found in cache, cloning:', path);
+                        const clonedModel = this.modelCache[path].clone();
+                        if (modelConfig.scale) {
+                            clonedModel.scale.set(modelConfig.scale, modelConfig.scale, modelConfig.scale);
+                        }
+                        clonedModel.userData.modelType = 'coockie';
+                        return clonedModel;
+                    }
+
+                    // Otherwise create placeholder and load async
+                    const placeholder = new THREE.Group();
+                    placeholder.userData.isPlaceholder = true;
+                    placeholder.userData.modelType = 'coockie';
+                    this.loadOBJModel(modelConfig, placeholder);
+                    return placeholder;
+                }
+
                 let geometry;
 
                 switch (modelConfig.type) {
@@ -840,6 +1196,92 @@
                 }
             }
 
+            async loadOBJModel(modelConfig, placeholder) {
+                const path = modelConfig.path;
+                console.log('loadOBJModel called with path:', path);
+
+                if (!this.objLoader) {
+                    console.error('OBJLoader not available!');
+                    return;
+                }
+
+                // Check if already loading
+                if (this.loadingModels[path]) {
+                    console.log('OBJ Model already loading, adding to queue:', path);
+                    if (placeholder) {
+                        this.loadingModels[path].push({ placeholder, modelConfig });
+                    }
+                    return;
+                }
+
+                // Start loading
+                console.log('Starting to load OBJ model:', path);
+                this.loadingModels[path] = placeholder ? [{ placeholder, modelConfig }] : [];
+
+                try {
+                    this.objLoader.load(
+                        path,
+                        (object) => {
+                            console.log('OBJ loaded successfully:', path, object);
+
+                            // Apply textures
+                            const textureLoader = this.textureLoader;
+                            const texture = modelConfig.texture ? textureLoader.load(modelConfig.texture) : null;
+                            const normalMap = modelConfig.normalMap ? textureLoader.load(modelConfig.normalMap) : null;
+                            const aoMap = modelConfig.aoMap ? textureLoader.load(modelConfig.aoMap) : null;
+
+                            object.traverse((child) => {
+                                if (child.isMesh) {
+                                    const material = new THREE.MeshStandardMaterial({
+                                        map: texture,
+                                        normalMap: normalMap,
+                                        aoMap: aoMap,
+                                        aoMapIntensity: 1.0,
+                                        metalness: 0.1,
+                                        roughness: 0.8
+                                    });
+                                    child.material = material;
+                                }
+                            });
+
+                            const loadedModel = object;
+                            loadedModel.userData.modelType = 'coockie';
+                            this.modelCache[path] = loadedModel;
+                            this.preloadingModels.delete(path);
+
+                            console.log('OBJ Model processed with textures');
+
+                            // Replace all waiting placeholders
+                            for (const waiting of this.loadingModels[path]) {
+                                if (!waiting.placeholder) {
+                                    continue;
+                                }
+                                const clonedModel = loadedModel.clone();
+                                clonedModel.userData.modelType = 'coockie';
+                                this.replaceWithLoadedModel(waiting.placeholder, clonedModel, waiting.modelConfig);
+                            }
+
+                            delete this.loadingModels[path];
+                        },
+                        (xhr) => {
+                            if (xhr.total > 0) {
+                                const percent = (xhr.loaded / xhr.total) * 100;
+                                console.log(`Loading OBJ ${path}: ${percent.toFixed(0)}%`);
+                            }
+                        },
+                        (error) => {
+                            console.error('Error loading OBJ model:', path, error);
+                            delete this.loadingModels[path];
+                            this.preloadingModels.delete(path);
+                        }
+                    );
+                } catch (error) {
+                    console.error('Exception loading OBJ model:', path, error);
+                    delete this.loadingModels[path];
+                    this.preloadingModels.delete(path);
+                }
+            }
+
             replaceWithLoadedModel(placeholder, loadedModel, modelConfig) {
                 console.log('replaceWithLoadedModel called', {
                     hasParent: !!placeholder.parent,
@@ -907,6 +1349,11 @@
                         this.currentQRData = null;
                         this.isFadingOut = false;
                         this.resetPositionFilters();
+
+                        // Hide fortune when model is removed
+                        if (this.fortuneShown) {
+                            this.hideFortune();
+                        }
                     }
                     return;
                 }
@@ -919,6 +1366,12 @@
                     if (this.model) {
                         this.scene.remove(this.model);
                     }
+
+                    // Hide fortune when switching to different QR code
+                    if (this.fortuneShown) {
+                        this.hideFortune();
+                    }
+
                     this.model = this.create3DModel(modelConfig);
                     this.scene.add(this.model);
                     this.currentQRData = qrData;
@@ -1185,6 +1638,9 @@
             }
 
             renderScene() {
+                // Get accurate deltaTime from clock (only call once per frame!)
+                const deltaTime = Math.min(this.clock.getDelta(), 0.05); // Cap at 50ms to prevent huge jumps
+
                 // Apply smooth interpolation to model position every frame
                 if (this.model) {
                     const now = Date.now();
@@ -1204,13 +1660,111 @@
                     // Smooth scale animation for appearance
                     this.currentScale += (this.targetScale - this.currentScale) * this.scaleLerpFactor;
                     // Apply animation scale as multiplier to base scale and user scale
-                    const finalScale = this.baseScale * this.currentScale * this.userScale;
-                    this.model.scale.setScalar(finalScale);
+                    let finalScale = this.baseScale * this.currentScale * this.userScale;
 
-                    // Apply user rotation
-                    this.model.rotation.x = this.userRotation.x;
-                    this.model.rotation.y = this.userRotation.y;
-                    this.model.rotation.z = this.userRotation.z;
+                    // Cookie-specific animations
+                    if (this.model.userData.modelType === 'coockie') {
+                        this.idleAnimationTime += deltaTime;
+
+                        // TAP ANIMATION (вращение + увеличение)
+                        if (this.isTapAnimating) {
+                            this.tapAnimationProgress += deltaTime * 1.2; // Faster completion
+
+                            if (this.tapAnimationProgress < 1) {
+                                // Smooth easing function
+                                const easeProgress = this.easeInOutCubic(this.tapAnimationProgress);
+
+                                // Scale up during tap - smoother
+                                const tapScale = 1 + easeProgress * 0.3; // Увеличение на 30%
+                                finalScale *= tapScale;
+
+                                // Smoother rotation during tap
+                                const tapRotation = easeProgress * Math.PI * 0.75; // 135 degrees
+                                const tapRotationX = Math.sin(tapRotation * 0.5) * 0.15;
+
+                                this.model.rotation.y = this.userRotation.y + tapRotation;
+                                this.model.rotation.x = this.userRotation.x + tapRotationX;
+
+                                // Store values for smooth transition
+                                this.finalTapRotation.y = tapRotation;
+                                this.finalTapRotation.x = tapRotationX;
+                            } else {
+                                // Animation finished - smoothly transition to opened state
+                                this.isTapAnimating = false;
+                                this.cookieOpened = true;
+
+                                // Start paper animation after a tiny delay
+                                if (!this.paperShouldAnimate) {
+                                    setTimeout(() => {
+                                        this.paperShouldAnimate = true;
+                                        console.log('📄 Starting paper animation');
+                                    }, 150); // Slightly longer delay
+                                }
+
+                                console.log('🍪 Cookie opened, final rotation saved:', this.finalTapRotation);
+                            }
+                        }
+                        // IDLE ANIMATION
+                        else if (!this.cookieOpened) {
+                            // BEFORE TAP - more noticeable idle animation
+                            const rotationSpeed = 0.5;
+                            const idleRotationY = Math.sin(this.idleAnimationTime * rotationSpeed) * 0.4; // Increased from 0.15
+
+                            // Покачивание вверх-вниз (floating) - more visible
+                            const floatSpeed = 0.8;
+                            const floatAmount = 0.02; // Increased from 0.01
+                            const floatOffset = Math.sin(this.idleAnimationTime * floatSpeed) * floatAmount;
+                            this.model.position.y += floatOffset;
+
+                            // Apply idle rotation - more visible
+                            this.model.rotation.y = this.userRotation.y + idleRotationY;
+                            this.model.rotation.x = this.userRotation.x + Math.sin(this.idleAnimationTime * 0.6) * 0.15; // Increased
+                        } else {
+                            // AFTER TAP - keep scale increased
+                            finalScale *= 1.15;
+
+                            // FREEZE cookie during paper animation (no idle movement!)
+                            if (this.paperShouldAnimate && this.paperAnimationProgress < 1) {
+                                // Cookie is completely frozen at final tap position
+                                this.model.rotation.y = this.userRotation.y + this.finalTapRotation.y;
+                                this.model.rotation.x = this.userRotation.x + this.finalTapRotation.x;
+                                // No floating, no idle
+                                // Reset transition progress
+                                this.postPaperTransitionProgress = 0;
+                            } else {
+                                // Paper animation finished - smoothly transition to idle
+                                // Gradually increase transition from 0 to 1
+                                if (this.postPaperTransitionProgress < 1) {
+                                    this.postPaperTransitionProgress += deltaTime * 1.5; // Smooth 0.67s transition
+                                    this.postPaperTransitionProgress = Math.min(this.postPaperTransitionProgress, 1);
+                                }
+
+                                // Blend factor (0 = frozen, 1 = full idle)
+                                const blendFactor = this.easeOutCubic(this.postPaperTransitionProgress);
+
+                                const rotationSpeed = 0.3;
+                                const idleRotationY = Math.sin(this.idleAnimationTime * rotationSpeed) * 0.08 * blendFactor;
+                                const idleRotationX = Math.sin(this.idleAnimationTime * 0.4) * 0.06 * blendFactor;
+
+                                // Subtle floating
+                                const floatSpeed = 0.5;
+                                const floatAmount = 0.008 * blendFactor;
+                                const floatOffset = Math.sin(this.idleAnimationTime * floatSpeed) * floatAmount;
+                                this.model.position.y += floatOffset;
+
+                                // Apply subtle idle rotation ON TOP of final tap rotation
+                                this.model.rotation.y = this.userRotation.y + this.finalTapRotation.y + idleRotationY;
+                                this.model.rotation.x = this.userRotation.x + this.finalTapRotation.x + idleRotationX;
+                            }
+                        }
+                    } else {
+                        // Apply user rotation for non-cookie models
+                        this.model.rotation.x = this.userRotation.x;
+                        this.model.rotation.y = this.userRotation.y;
+                        this.model.rotation.z = this.userRotation.z;
+                    }
+
+                    this.model.scale.setScalar(finalScale);
 
                     // Apply fade-out animation
                     if (this.isFadingOut) {
@@ -1249,7 +1803,109 @@
                     }
                 }
 
+                // FORTUNE PAPER ANIMATION
+                if (this.fortunePaper && this.model) {
+                    // Store initial camera rotation once to avoid flickering
+                    if (!this.fortunePaper.userData.initialRotation) {
+                        this.fortunePaper.userData.initialRotation = this.camera.rotation.clone();
+                        console.log('📐 Saved initial camera rotation');
+                    }
+
+                    // Keep paper at cookie position until animation should start
+                    if (!this.paperShouldAnimate) {
+                        // Position paper at cookie center, but completely hidden
+                        this.fortunePaper.position.copy(this.model.position);
+                        this.fortunePaper.position.z += 0.02;
+                        this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
+                        this.fortunePaper.scale.set(1, 1, 1); // Keep scale normal
+
+                        // Hide with opacity instead
+                        this.fortunePaper.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                child.material.transparent = true;
+                                child.material.opacity = 0;
+                            }
+                        });
+                    } else {
+                        // Animate paper sliding out and fading in
+                        if (this.paperAnimationProgress < 1) {
+                            this.paperAnimationProgress += deltaTime * 0.9; // Smooth speed
+                            const rawProgress = Math.min(this.paperAnimationProgress, 1);
+                            const easeProgress = this.easeOutCubic(rawProgress);
+
+                            // Paper slides to the right of cookie
+                            const targetOffset = 0.45; // Further right for better positioning
+                            this.fortunePaper.position.x = this.model.position.x + (easeProgress * targetOffset);
+                            this.fortunePaper.position.y = this.model.position.y;
+                            this.fortunePaper.position.z = this.model.position.z + 0.02;
+
+                            // Keep rotation stable (no copy from camera!)
+                            this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
+
+                            // Keep scale normal (no stretching!)
+                            this.fortunePaper.scale.set(1, 1, 1);
+
+                            // Fade in effect - opacity from 0 to 1
+                            const fadeProgress = this.easeOutCubic(rawProgress);
+                            this.fortunePaper.traverse((child) => {
+                                if (child.isMesh && child.material) {
+                                    child.material.transparent = true;
+                                    child.material.opacity = fadeProgress;
+                                }
+                            });
+
+                            // Log every 20% progress
+                            if (Math.floor(rawProgress * 5) > Math.floor((rawProgress - deltaTime * 0.9) * 5)) {
+                                console.log('📜 Paper sliding:', (rawProgress * 100).toFixed(0) + '%',
+                                           'opacity:', fadeProgress.toFixed(2),
+                                           'offset:', (easeProgress * targetOffset).toFixed(3));
+                            }
+                        } else {
+                            // After animation, keep paper next to cookie
+                            const targetOffset = 0.45; // Further right for better positioning
+                            this.fortunePaper.position.x = this.model.position.x + targetOffset;
+                            this.fortunePaper.position.y = this.model.position.y + Math.sin(this.idleAnimationTime * 0.5) * 0.005;
+                            this.fortunePaper.position.z = this.model.position.z + 0.02;
+
+                            // Stable rotation
+                            this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
+                            this.fortunePaper.rotation.z += Math.sin(this.idleAnimationTime * 0.3) * 0.03;
+
+                            // Keep scale normal and fully visible
+                            this.fortunePaper.scale.set(1, 1, 1);
+                            this.fortunePaper.traverse((child) => {
+                                if (child.isMesh && child.material) {
+                                    child.material.transparent = true;
+                                    child.material.opacity = 1;
+                                }
+                            });
+                        }
+                    }
+                } else if (this.fortunePaper && !this.model) {
+                    console.warn('⚠️ Fortune paper exists but no model!');
+                }
+
                 this.renderer.render(this.scene, this.camera);
+            }
+
+            // Easing functions
+            easeOutBack(x) {
+                const c1 = 1.70158;
+                const c3 = c1 + 1;
+                return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+            }
+
+            easeOutCubic(x) {
+                return 1 - Math.pow(1 - x, 3);
+            }
+
+            easeInOutCubic(x) {
+                return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+            }
+
+            easeOutElastic(x) {
+                const c4 = (2 * Math.PI) / 3;
+                return x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * c4) + 1;
             }
         }
 
