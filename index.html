@@ -864,15 +864,15 @@
                     );
                 }
 
-                // Text styling - ОГРОМНЫЙ текст
+                // Text styling - оптимизированный размер для мобильных
                 ctx.fillStyle = '#000000';
-                ctx.font = 'bold 140px Arial, sans-serif'; // MASSIVE!
+                ctx.font = 'bold 100px Arial, sans-serif'; // Уменьшен с 140px (30% меньше)
                 ctx.textAlign = 'left'; // Left align for padding
                 ctx.textBaseline = 'middle';
 
-                // Left padding - space for cookie overlap
-                const leftPadding = 950; // Almost half canvas width for cookie space
-                const rightPadding = 150;
+                // Left padding - space for cookie overlap (уменьшен на 35%)
+                const leftPadding = 620; // Было 950, стало 620
+                const rightPadding = 120; // Было 150
 
                 // Word wrap
                 const maxWidth = canvas.width - leftPadding - rightPadding;
@@ -894,7 +894,7 @@
                 lines.push(currentLine);
 
                 // Draw lines with left padding
-                const lineHeight = 160;
+                const lineHeight = 115; // Было 160, уменьшено на 30%
                 const totalHeight = lines.length * lineHeight;
                 const startY = (canvas.height - totalHeight) / 2 + lineHeight / 2;
 
@@ -902,7 +902,7 @@
                     ctx.fillText(line, leftPadding, startY + index * lineHeight);
                 });
 
-                console.log('✅ Text texture created:', text, 'Lines:', lines.length, 'Font: 140px BOLD');
+                console.log('✅ Text texture created:', text, 'Lines:', lines.length, 'Font: 100px BOLD');
 
                 const texture = new THREE.CanvasTexture(canvas);
                 texture.needsUpdate = true;
@@ -918,8 +918,8 @@
                 const paperGroup = new THREE.Group();
                 paperGroup.userData.isPaper = true;
 
-                // Main paper plane - width 0.8, smaller height to match cookie
-                const geometry = new THREE.PlaneGeometry(0.8, 0.25);
+                // Main paper plane - уменьшен на 30% (было 0.8 x 0.25)
+                const geometry = new THREE.PlaneGeometry(0.56, 0.175);
                 const material = new THREE.MeshStandardMaterial({
                     map: texture,
                     side: THREE.DoubleSide,
@@ -932,8 +932,8 @@
                 const paper = new THREE.Mesh(geometry, material);
                 paperGroup.add(paper);
 
-                // Shadow plane (тень от печеньки)
-                const shadowGeometry = new THREE.PlaneGeometry(0.8, 0.25);
+                // Shadow plane (тень от печеньки) - также уменьшен
+                const shadowGeometry = new THREE.PlaneGeometry(0.56, 0.175);
                 const shadowMaterial = new THREE.MeshBasicMaterial({
                     color: 0x000000,
                     transparent: true,
@@ -1997,8 +1997,8 @@
                             const rawProgress = Math.min(this.paperAnimationProgress, 1);
                             const easeProgress = this.easeOutCubic(rawProgress);
 
-                            // Paper slides to the right of cookie
-                            const targetOffset = 0.45; // Further right for better positioning
+                            // Paper slides to the right of cookie (уменьшен на 35%)
+                            const targetOffset = 0.29; // Было 0.45, стало 0.29
                             this.fortunePaper.position.x = this.model.position.x + (easeProgress * targetOffset);
                             this.fortunePaper.position.y = this.model.position.y;
                             this.fortunePaper.position.z = this.model.position.z + 0.02;
@@ -2025,8 +2025,8 @@
                                            'offset:', (easeProgress * targetOffset).toFixed(3));
                             }
                         } else {
-                            // After animation, keep paper next to cookie
-                            const targetOffset = 0.45; // Further right for better positioning
+                            // After animation, keep paper next to cookie (уменьшен на 35%)
+                            const targetOffset = 0.29; // Было 0.45, стало 0.29
                             this.fortunePaper.position.x = this.model.position.x + targetOffset;
                             this.fortunePaper.position.y = this.model.position.y + Math.sin(this.idleAnimationTime * 0.5) * 0.005;
                             this.fortunePaper.position.z = this.model.position.z + 0.02;
