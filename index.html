@@ -871,12 +871,12 @@
 
                 // Text styling - оптимизированный размер для мобильных
                 ctx.fillStyle = '#000000';
-                ctx.font = 'bold 100px Arial, sans-serif'; // Уменьшен с 140px (30% меньше)
+                ctx.font = 'bold 80px Arial, sans-serif'; // Уменьшен дополнительно под новую печеньку
                 ctx.textAlign = 'left'; // Left align for padding
                 ctx.textBaseline = 'middle';
 
                 // Left padding - space for cookie overlap (уменьшен на 35%)
-                const leftPadding = 820; // Ещё больше смещаем текст, чтобы сохранить зазор с уменьшенной печенькой
+                const leftPadding = 700; // Сместили ближе к печеньке с учётом уменьшенного размера
                 const rightPadding = 120; // Было 150
 
                 // Word wrap
@@ -899,7 +899,7 @@
                 lines.push(currentLine);
 
                 // Draw lines with left padding
-                const lineHeight = 115; // Было 160, уменьшено на 30%
+                const lineHeight = 96; // Подстроено под новый размер шрифта
                 const totalHeight = lines.length * lineHeight;
                 const startY = (canvas.height - totalHeight) / 2 + lineHeight / 2;
 
@@ -924,7 +924,7 @@
                 paperGroup.userData.isPaper = true;
 
                 // Main paper plane - уменьшен на 30% (было 0.8 x 0.25)
-                const geometry = new THREE.PlaneGeometry(0.56, 0.175);
+                const geometry = new THREE.PlaneGeometry(0.38, 0.12); // Уменьшили бумажку под компактную печеньку
                 const material = new THREE.MeshStandardMaterial({
                     map: texture,
                     side: THREE.DoubleSide,
@@ -938,7 +938,7 @@
                 paperGroup.add(paper);
 
                 // Shadow plane (тень от печеньки) - также уменьшен
-                const shadowGeometry = new THREE.PlaneGeometry(0.56, 0.175);
+                const shadowGeometry = new THREE.PlaneGeometry(0.38, 0.12);
                 const shadowMaterial = new THREE.MeshBasicMaterial({
                     color: 0x000000,
                     transparent: true,
@@ -2008,7 +2008,7 @@
                             const easeProgress = this.easeOutCubic(rawProgress);
 
                             // Paper slides to the right of cookie (уменьшен на 35%)
-                            const targetOffset = 0.24; // Поджали смещение под меньшую печеньку
+                            const targetOffset = 0.18; // Поджали смещение под уменьшенную бумажку
                             this.fortunePaper.position.x = this.model.position.x + (easeProgress * targetOffset);
                             this.fortunePaper.position.y = this.model.position.y;
                             this.fortunePaper.position.z = this.model.position.z + 0.02;
@@ -2036,7 +2036,7 @@
                             }
                         } else {
                             // After animation, keep paper next to cookie (уменьшен на 35%)
-                            const targetOffset = 0.24; // Поджали смещение под меньшую печеньку
+                            const targetOffset = 0.18; // Поджали смещение под уменьшенную бумажку
                             this.fortunePaper.position.x = this.model.position.x + targetOffset;
                             this.fortunePaper.position.y = this.model.position.y + Math.sin(this.idleAnimationTime * 0.5) * 0.005;
                             this.fortunePaper.position.z = this.model.position.z + 0.02;
