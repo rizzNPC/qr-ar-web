@@ -381,7 +381,7 @@
                 texture: 'assets/coockie_model/model.jpg',
                 normalMap: 'assets/coockie_model/model_normal.jpg',
                 aoMap: 'assets/coockie_model/model_occlusion.jpg',
-                scale: 0.0058
+                scale: 0.0028
             }
         };
 
@@ -738,7 +738,7 @@
                             this.userScale = this.touchState.startScale * scale;
                             this.userScale = Math.max(0.3, Math.min(3, this.userScale)); // Clamp between 0.3x and 3x
                         } else {
-                            this.userScale = 1; // Блокируем pinch-скейл для печеньки
+                            this.userScale = 0.5; // Блокируем pinch-скейл для печеньки
                         }
                     } else if (touches.length === 1 && lastTouches.length === 1) {
                         // Pan rotation
@@ -876,7 +876,7 @@
                 ctx.textBaseline = 'middle';
 
                 // Left padding - space for cookie overlap (уменьшен на 35%)
-                const leftPadding = 760; // Дополнительно сместили текст правее для аккуратного выхода из печеньки
+                const leftPadding = 820; // Ещё больше смещаем текст, чтобы сохранить зазор с уменьшенной печенькой
                 const rightPadding = 120; // Было 150
 
                 // Word wrap
@@ -2008,7 +2008,7 @@
                             const easeProgress = this.easeOutCubic(rawProgress);
 
                             // Paper slides to the right of cookie (уменьшен на 35%)
-                            const targetOffset = 0.29; // Было 0.45, стало 0.29
+                            const targetOffset = 0.24; // Поджали смещение под меньшую печеньку
                             this.fortunePaper.position.x = this.model.position.x + (easeProgress * targetOffset);
                             this.fortunePaper.position.y = this.model.position.y;
                             this.fortunePaper.position.z = this.model.position.z + 0.02;
@@ -2036,7 +2036,7 @@
                             }
                         } else {
                             // After animation, keep paper next to cookie (уменьшен на 35%)
-                            const targetOffset = 0.29; // Было 0.45, стало 0.29
+                            const targetOffset = 0.24; // Поджали смещение под меньшую печеньку
                             this.fortunePaper.position.x = this.model.position.x + targetOffset;
                             this.fortunePaper.position.y = this.model.position.y + Math.sin(this.idleAnimationTime * 0.5) * 0.005;
                             this.fortunePaper.position.z = this.model.position.z + 0.02;
