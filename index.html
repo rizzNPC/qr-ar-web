@@ -855,28 +855,78 @@
                 canvas.height = 1024;
                 const ctx = canvas.getContext('2d');
 
-                // Background - чистый белый как бумага
-                ctx.fillStyle = '#ffffff';
+                const drawRoundedRect = (x, y, w, h, r) => {
+                    const radius = Math.min(r, w / 2, h / 2);
+                    ctx.beginPath();
+                    ctx.moveTo(x + radius, y);
+                    ctx.lineTo(x + w - radius, y);
+                    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+                    ctx.lineTo(x + w, y + h - radius);
+                    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+                    ctx.lineTo(x + radius, y + h);
+                    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+                    ctx.lineTo(x, y + radius);
+                    ctx.quadraticCurveTo(x, y, x + radius, y);
+                    ctx.closePath();
+                };
+
+                // Background gradient (slight warm tone)
+                const backgroundGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                backgroundGradient.addColorStop(0, '#fffdf8');
+                backgroundGradient.addColorStop(1, '#fdf7eb');
+                ctx.fillStyle = backgroundGradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                // Лёгкая текстура бумаги (опционально)
-                ctx.fillStyle = '#fafafa';
-                for (let i = 0; i < 100; i++) {
+                const paperX = 90;
+                const paperY = 140;
+                const paperWidth = canvas.width - paperX * 2;
+                const paperHeight = canvas.height - paperY * 2;
+                const paperRadius = 120;
+
+                // Paper body with subtle gradient
+                const paperGradient = ctx.createLinearGradient(paperX, paperY, paperX + paperWidth, paperY + paperHeight);
+                paperGradient.addColorStop(0, '#ffffff');
+                paperGradient.addColorStop(1, '#f5efe4');
+                ctx.fillStyle = paperGradient;
+                drawRoundedRect(paperX, paperY, paperWidth, paperHeight, paperRadius);
+                ctx.fill();
+
+                // Cookie shadow overlay toward left edge
+                const shadowGradient = ctx.createLinearGradient(paperX + 40, paperY, paperX + 360, paperY);
+                shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0.25)');
+                shadowGradient.addColorStop(0.4, 'rgba(0, 0, 0, 0.12)');
+                shadowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = shadowGradient;
+                drawRoundedRect(paperX, paperY, paperWidth, paperHeight, paperRadius);
+                ctx.fill();
+
+                // Soft inner stroke
+                ctx.lineWidth = 10;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                drawRoundedRect(paperX + 5, paperY + 5, paperWidth - 10, paperHeight - 10, paperRadius - 10);
+                ctx.stroke();
+
+                // Light noise for texture
+                const noiseDensity = 120;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                for (let i = 0; i < noiseDensity; i++) {
+                    const size = Math.random() * 1.2 + 0.4;
                     ctx.fillRect(
-                        Math.random() * canvas.width,
-                        Math.random() * canvas.height,
-                        1, 1
+                        paperX + Math.random() * (paperWidth - size),
+                        paperY + Math.random() * (paperHeight - size),
+                        size,
+                        size
                     );
                 }
 
                 // Text styling - оптимизированный размер для мобильных
-                ctx.fillStyle = '#000000';
-                ctx.font = 'bold 80px Arial, sans-serif'; // Уменьшен дополнительно под новую печеньку
+                ctx.fillStyle = '#2d1c10';
+                ctx.font = '600 80px "Inter", "SF Pro Display", Arial, sans-serif';
                 ctx.textAlign = 'left'; // Left align for padding
                 ctx.textBaseline = 'middle';
 
                 // Left padding - space for cookie overlap (уменьшен на 35%)
-                const leftPadding = 700; // Сместили ближе к печеньке с учётом уменьшенного размера
+                const leftPadding = paperX + 520;
                 const rightPadding = 120; // Было 150
 
                 // Word wrap
@@ -899,7 +949,7 @@
                 lines.push(currentLine);
 
                 // Draw lines with left padding
-                const lineHeight = 96; // Подстроено под новый размер шрифта
+                const lineHeight = 92; // Подстроено под новый размер шрифта
                 const totalHeight = lines.length * lineHeight;
                 const startY = (canvas.height - totalHeight) / 2 + lineHeight / 2;
 
@@ -907,7 +957,7 @@
                     ctx.fillText(line, leftPadding, startY + index * lineHeight);
                 });
 
-                console.log('✅ Text texture created:', text, 'Lines:', lines.length, 'Font: 100px BOLD');
+                console.log('✅ Text texture created:', text, 'Lines:', lines.length, 'Font: 80px SemiBold');
 
                 const texture = new THREE.CanvasTexture(canvas);
                 texture.needsUpdate = true;
@@ -937,21 +987,7 @@
                 const paper = new THREE.Mesh(geometry, material);
                 paperGroup.add(paper);
 
-                // Shadow plane (тень от печеньки) - также уменьшен
-                const shadowGeometry = new THREE.PlaneGeometry(0.38, 0.12);
-                const shadowMaterial = new THREE.MeshBasicMaterial({
-                    color: 0x000000,
-                    transparent: true,
-                    opacity: 0.3,
-                    side: THREE.DoubleSide
-                });
-                const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
-                shadow.position.z = -0.002; // Slightly behind paper
-                shadow.position.x = -0.01; // Offset for shadow effect
-                shadow.position.y = -0.01;
-                paperGroup.add(shadow);
-
-                console.log('✅ 3D Fortune paper created: 0.8 x 0.25 with shadow');
+                console.log('✅ 3D Fortune paper created: 0.38 x 0.12, redesigned');
 
                 return paperGroup;
             }
@@ -1989,7 +2025,7 @@
                     if (!this.paperShouldAnimate) {
                         // Position paper at cookie center, but completely hidden
                         this.fortunePaper.position.copy(this.model.position);
-                        this.fortunePaper.position.z += 0.02;
+                        this.fortunePaper.position.z = this.model.position.z - 0.035;
                         this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
                         this.fortunePaper.scale.set(1, 1, 1); // Keep scale normal
 
@@ -2003,21 +2039,29 @@
                     } else {
                         // Animate paper sliding out and fading in
                         if (this.paperAnimationProgress < 1) {
-                            this.paperAnimationProgress += deltaTime * 0.9; // Smooth speed
+                            this.paperAnimationProgress += deltaTime * 0.95; // Чуть быстрее для живости
                             const rawProgress = Math.min(this.paperAnimationProgress, 1);
-                            const easeProgress = this.easeOutCubic(rawProgress);
+                            const slideProgress = this.easeOutCubic(rawProgress);
+                            const revealBack = Math.min(this.easeOutBack(Math.min(rawProgress * 1.05, 1)), 1.08);
+                            const revealProgress = Math.min(revealBack, 1);
+                            const settleFactor = 1 - revealProgress;
 
-                            // Paper slides to the right of cookie (уменьшен на 35%)
-                            const targetOffset = 0.18; // Поджали смещение под уменьшенную бумажку
-                            this.fortunePaper.position.x = this.model.position.x + (easeProgress * targetOffset);
-                            this.fortunePaper.position.y = this.model.position.y;
-                            this.fortunePaper.position.z = this.model.position.z + 0.02;
+                            // Paper slides to the right of cookie
+                            const targetOffset = 0.18; // Держим смещение рядом с печенькой
+                            this.fortunePaper.position.x = this.model.position.x + (slideProgress * targetOffset);
+                            this.fortunePaper.position.y = this.model.position.y + settleFactor * 0.015;
+                            this.fortunePaper.position.z = this.model.position.z - 0.035;
 
-                            // Keep rotation stable (no copy from camera!)
+                            // Add a gentle tilt that eases out
                             this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
+                            const initialTilt = -0.32;
+                            const initialYaw = -0.14;
+                            this.fortunePaper.rotation.z += initialTilt * settleFactor;
+                            this.fortunePaper.rotation.y += initialYaw * settleFactor;
 
-                            // Keep scale normal (no stretching!)
-                            this.fortunePaper.scale.set(1, 1, 1);
+                            // Scale in with slight overshoot
+                            const scaleValue = 0.84 + revealBack * 0.18;
+                            this.fortunePaper.scale.set(scaleValue, scaleValue, scaleValue);
 
                             // Fade in effect - opacity from 0 to 1
                             const fadeProgress = this.easeOutCubic(rawProgress);
@@ -2029,24 +2073,26 @@
                             });
 
                             // Log every 20% progress
-                            if (Math.floor(rawProgress * 5) > Math.floor((rawProgress - deltaTime * 0.9) * 5)) {
+                            if (Math.floor(rawProgress * 5) > Math.floor((rawProgress - deltaTime * 0.95) * 5)) {
                                 console.log('📜 Paper sliding:', (rawProgress * 100).toFixed(0) + '%',
                                            'opacity:', fadeProgress.toFixed(2),
-                                           'offset:', (easeProgress * targetOffset).toFixed(3));
+                                           'offset:', (slideProgress * targetOffset).toFixed(3),
+                                           'scale:', scaleValue.toFixed(2));
                             }
                         } else {
                             // After animation, keep paper next to cookie (уменьшен на 35%)
-                            const targetOffset = 0.18; // Поджали смещение под уменьшенную бумажку
+                            const targetOffset = 0.23; // Держим смещение рядом с печенькой
                             this.fortunePaper.position.x = this.model.position.x + targetOffset;
                             this.fortunePaper.position.y = this.model.position.y + Math.sin(this.idleAnimationTime * 0.5) * 0.005;
-                            this.fortunePaper.position.z = this.model.position.z + 0.02;
+                            this.fortunePaper.position.z = this.model.position.z - 0.035;
 
                             // Stable rotation
                             this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
                             this.fortunePaper.rotation.z += Math.sin(this.idleAnimationTime * 0.3) * 0.03;
 
-                            // Keep scale normal and fully visible
-                            this.fortunePaper.scale.set(1, 1, 1);
+                            // Subtle breathing scale
+                            const idleScale = 1 + Math.sin(this.idleAnimationTime * 0.9) * 0.015;
+                            this.fortunePaper.scale.set(idleScale, idleScale, idleScale);
                             this.fortunePaper.traverse((child) => {
                                 if (child.isMesh && child.material) {
                                     child.material.transparent = true;
