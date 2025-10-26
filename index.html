@@ -381,7 +381,7 @@
                 texture: 'assets/coockie_model/model.jpg',
                 normalMap: 'assets/coockie_model/model_normal.jpg',
                 aoMap: 'assets/coockie_model/model_occlusion.jpg',
-                scale: 0.01
+                scale: 0.009
             }
         };
 
@@ -728,13 +728,18 @@
                     }
 
                     if (touches.length === 2 && lastTouches.length === 2) {
-                        // Pinch zoom
-                        const dx = touches[0].clientX - touches[1].clientX;
-                        const dy = touches[0].clientY - touches[1].clientY;
-                        const currentDistance = Math.sqrt(dx * dx + dy * dy);
-                        const scale = currentDistance / this.touchState.startDistance;
-                        this.userScale = this.touchState.startScale * scale;
-                        this.userScale = Math.max(0.3, Math.min(3, this.userScale)); // Clamp between 0.3x and 3x
+                        const isCookie = this.model && this.model.userData && this.model.userData.modelType === 'coockie';
+                        if (!isCookie) {
+                            // Pinch zoom
+                            const dx = touches[0].clientX - touches[1].clientX;
+                            const dy = touches[0].clientY - touches[1].clientY;
+                            const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                            const scale = currentDistance / this.touchState.startDistance;
+                            this.userScale = this.touchState.startScale * scale;
+                            this.userScale = Math.max(0.3, Math.min(3, this.userScale)); // Clamp between 0.3x and 3x
+                        } else {
+                            this.userScale = 1; // Блокируем pinch-скейл для печеньки
+                        }
                     } else if (touches.length === 1 && lastTouches.length === 1) {
                         // Pan rotation
                         const deltaX = touches[0].clientX - lastTouches[0].clientX;
@@ -871,7 +876,7 @@
                 ctx.textBaseline = 'middle';
 
                 // Left padding - space for cookie overlap (уменьшен на 35%)
-                const leftPadding = 620; // Было 950, стало 620
+                const leftPadding = 700; // Сместили текст правее, чтобы он выходил из печеньки
                 const rightPadding = 120; // Было 150
 
                 // Word wrap
@@ -1825,9 +1830,14 @@
                     this.currentScale += (this.targetScale - this.currentScale) * this.scaleLerpFactor;
                     // Apply animation scale as multiplier to base scale and user scale
                     let finalScale = this.baseScale * this.currentScale * this.userScale;
+                    const isCookieModel = this.model.userData && this.model.userData.modelType === 'coockie';
+                    if (isCookieModel) {
+                        finalScale = this.baseScale * this.currentScale;
+                        this.userScale = 1;
+                    }
 
                     // Cookie-specific animations
-                    if (this.model.userData.modelType === 'coockie') {
+                    if (isCookieModel) {
                         this.idleAnimationTime += deltaTime;
 
                         // TAP ANIMATION (вращение + увеличение)
