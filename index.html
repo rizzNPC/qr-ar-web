@@ -607,6 +607,17 @@
                 this.paperShouldAnimate = false; // Separate flag for paper animation start
                 this.finalTapRotation = { x: 0, y: 0 }; // Store final rotation from tap animation
                 this.postPaperTransitionProgress = 0; // Smooth transition from freeze to idle after paper
+                this.revealTwistY = 0;
+                this.targetRevealTwistY = 0;
+                this.revealTwistSpeed = 6;
+                this.fortuneOffset = new THREE.Vector3(); // Reusable local offset for paper positioning
+                this.tempVector = new THREE.Vector3(); // Helper vector to compute world offsets
+                this.paperIdleBlend = 0;
+                this.revealTwistY = 0;
+                this.targetRevealTwistY = 0;
+                this.revealTwistSpeed = 6;
+                this.fortuneOffset = new THREE.Vector3(); // Reusable local offset for paper positioning
+                this.tempVector = new THREE.Vector3(); // Helper vector to compute world offsets
 
                 this.init();
             }
@@ -877,7 +888,7 @@
                 ctx.fillStyle = backgroundGradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                const paperX = 90;
+                const paperX = 70;
                 const paperY = 140;
                 const paperWidth = canvas.width - paperX * 2;
                 const paperHeight = canvas.height - paperY * 2;
@@ -888,15 +899,6 @@
                 paperGradient.addColorStop(0, '#ffffff');
                 paperGradient.addColorStop(1, '#f5efe4');
                 ctx.fillStyle = paperGradient;
-                drawRoundedRect(paperX, paperY, paperWidth, paperHeight, paperRadius);
-                ctx.fill();
-
-                // Cookie shadow overlay toward left edge
-                const shadowGradient = ctx.createLinearGradient(paperX + 40, paperY, paperX + 360, paperY);
-                shadowGradient.addColorStop(0, 'rgba(0, 0, 0, 0.25)');
-                shadowGradient.addColorStop(0.4, 'rgba(0, 0, 0, 0.12)');
-                shadowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = shadowGradient;
                 drawRoundedRect(paperX, paperY, paperWidth, paperHeight, paperRadius);
                 ctx.fill();
 
@@ -926,7 +928,7 @@
                 ctx.textBaseline = 'middle';
 
                 // Left padding - space for cookie overlap (уменьшен на 35%)
-                const leftPadding = paperX + 520;
+                const leftPadding = paperX + 640;
                 const rightPadding = 120; // Было 150
 
                 // Word wrap
@@ -974,7 +976,7 @@
                 paperGroup.userData.isPaper = true;
 
                 // Main paper plane - уменьшен на 30% (было 0.8 x 0.25)
-                const geometry = new THREE.PlaneGeometry(0.38, 0.12); // Уменьшили бумажку под компактную печеньку
+                const geometry = new THREE.PlaneGeometry(0.33, 0.11); // Чуть короче и уже слева
                 const material = new THREE.MeshStandardMaterial({
                     map: texture,
                     side: THREE.DoubleSide,
@@ -987,7 +989,7 @@
                 const paper = new THREE.Mesh(geometry, material);
                 paperGroup.add(paper);
 
-                console.log('✅ 3D Fortune paper created: 0.38 x 0.12, redesigned');
+                console.log('✅ 3D Fortune paper created: 0.33 x 0.11, redesigned');
 
                 return paperGroup;
             }
@@ -1007,10 +1009,16 @@
 
                 // Create 3D paper with fortune text
                 this.fortunePaper = this.create3DFortunePaper(this.currentFortune);
+                this.revealTwistY = 0;
+                this.targetRevealTwistY = 0;
+                this.paperIdleBlend = 0;
 
                 // Position paper at cookie center initially (will animate out)
                 if (this.model) {
-                    this.fortunePaper.position.copy(this.model.position);
+                    this.fortuneOffset.set(0, 0, -0.035);
+                    const initialOffset = this.tempVector.copy(this.fortuneOffset).applyQuaternion(this.model.quaternion);
+                    this.fortunePaper.position.copy(this.model.position).add(initialOffset);
+                    this.fortunePaper.quaternion.copy(this.model.quaternion);
                     console.log('📍 Paper positioned at cookie:', this.model.position);
                 } else {
                     console.error('❌ No model found! Paper not positioned');
@@ -1047,6 +1055,9 @@
                 this.idleAnimationTime = 0;
                 this.postPaperTransitionProgress = 0;
                 this.finalTapRotation = { x: 0, y: 0 };
+                this.revealTwistY = 0;
+                this.targetRevealTwistY = 0;
+                this.paperIdleBlend = 0;
 
                 console.log('🧹 Fortune hidden, cookie state reset');
             }
@@ -1875,43 +1886,56 @@
                     // Cookie-specific animations
                     if (isCookieModel) {
                         this.idleAnimationTime += deltaTime;
+                        if (!this.cookieOpened) {
+                            this.targetRevealTwistY = 0;
+                        }
+                        const twistAlpha = Math.min(deltaTime * this.revealTwistSpeed, 1);
+                        this.revealTwistY += (this.targetRevealTwistY - this.revealTwistY) * twistAlpha;
+                        const revealTwist = this.revealTwistY;
 
                         // TAP ANIMATION (вращение + увеличение)
                         if (this.isTapAnimating) {
-                            this.tapAnimationProgress += deltaTime * 1.2; // Faster completion
+                            this.tapAnimationProgress += deltaTime * 1.05;
 
                             if (this.tapAnimationProgress < 1) {
-                                // Smooth easing function
-                                const easeProgress = this.easeInOutCubic(this.tapAnimationProgress);
+                                const openProgress = Math.min(this.tapAnimationProgress, 1);
+                                const rotationEase = this.easeOutCubic(openProgress);
+                                const tiltEase = this.easeOutCubic(openProgress);
 
-                                // Scale up during tap - smoother
-                                const tapScale = 1 + easeProgress * 0.3; // Увеличение на 30%
+                                const baseScaleBoost = 0.2;
+                                const tapScale = 1 + rotationEase * baseScaleBoost;
                                 finalScale *= tapScale;
 
-                                // Smoother rotation during tap
-                                const tapRotation = easeProgress * Math.PI * 0.75; // 135 degrees
-                                const tapRotationX = Math.sin(tapRotation * 0.5) * 0.15;
+                                const fullSpin = rotationEase * Math.PI * 2; // 360° spin
+                                const tiltAmount = 0.22 * tiltEase;
 
-                                this.model.rotation.y = this.userRotation.y + tapRotation;
-                                this.model.rotation.x = this.userRotation.x + tapRotationX;
+                                this.model.rotation.y = this.userRotation.y + fullSpin + revealTwist;
+                                this.model.rotation.x = this.userRotation.x + tiltAmount;
 
-                                // Store values for smooth transition
-                                this.finalTapRotation.y = tapRotation;
-                                this.finalTapRotation.x = tapRotationX;
+                                this.model.position.y += Math.sin(openProgress * Math.PI) * 0.02;
+
+                                this.finalTapRotation.y = fullSpin;
+                                this.finalTapRotation.x = tiltAmount;
                             } else {
-                                // Animation finished - smoothly transition to opened state
                                 this.isTapAnimating = false;
                                 this.cookieOpened = true;
 
-                                // Start paper animation after a tiny delay
+                                // After a full spin, reset rotation and keep the tilt open
+                                this.finalTapRotation.y = 0;
+                                this.finalTapRotation.x = 0.18;
+
+                                const desiredFacing = 0;
+                                this.targetRevealTwistY = desiredFacing;
+
                                 if (!this.paperShouldAnimate) {
                                     setTimeout(() => {
                                         this.paperShouldAnimate = true;
+                                        this.paperIdleBlend = 0;
                                         console.log('📄 Starting paper animation');
-                                    }, 150); // Slightly longer delay
+                                    }, 120);
                                 }
 
-                                console.log('🍪 Cookie opened, final rotation saved:', this.finalTapRotation);
+                                console.log('🍪 Cookie opened, spin complete');
                             }
                         }
                         // IDLE ANIMATION
@@ -1927,7 +1951,7 @@
                             this.model.position.y += floatOffset;
 
                             // Apply idle rotation - more visible
-                            this.model.rotation.y = this.userRotation.y + idleRotationY;
+                            this.model.rotation.y = this.userRotation.y + idleRotationY + revealTwist;
                             this.model.rotation.x = this.userRotation.x + Math.sin(this.idleAnimationTime * 0.6) * 0.15; // Increased
                         } else {
                             // AFTER TAP - keep scale increased
@@ -1936,7 +1960,7 @@
                             // FREEZE cookie during paper animation (no idle movement!)
                             if (this.paperShouldAnimate && this.paperAnimationProgress < 1) {
                                 // Cookie is completely frozen at final tap position
-                                this.model.rotation.y = this.userRotation.y + this.finalTapRotation.y;
+                                this.model.rotation.y = this.userRotation.y + this.finalTapRotation.y + revealTwist;
                                 this.model.rotation.x = this.userRotation.x + this.finalTapRotation.x;
                                 // No floating, no idle
                                 // Reset transition progress
@@ -1963,7 +1987,7 @@
                                 this.model.position.y += floatOffset;
 
                                 // Apply subtle idle rotation ON TOP of final tap rotation
-                                this.model.rotation.y = this.userRotation.y + this.finalTapRotation.y + idleRotationY;
+                                this.model.rotation.y = this.userRotation.y + this.finalTapRotation.y + idleRotationY + revealTwist;
                                 this.model.rotation.x = this.userRotation.x + this.finalTapRotation.x + idleRotationX;
                             }
                         }
@@ -2015,21 +2039,18 @@
 
                 // FORTUNE PAPER ANIMATION
                 if (this.fortunePaper && this.model) {
-                    // Store initial camera rotation once to avoid flickering
-                    if (!this.fortunePaper.userData.initialRotation) {
-                        this.fortunePaper.userData.initialRotation = this.camera.rotation.clone();
-                        console.log('📐 Saved initial camera rotation');
-                    }
+
+                    const baseDepth = -0.035;
+                    const targetOffsetX = 0.18;
 
                     // Keep paper at cookie position until animation should start
                     if (!this.paperShouldAnimate) {
-                        // Position paper at cookie center, but completely hidden
-                        this.fortunePaper.position.copy(this.model.position);
-                        this.fortunePaper.position.z = this.model.position.z - 0.035;
-                        this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
-                        this.fortunePaper.scale.set(1, 1, 1); // Keep scale normal
-
-                        // Hide with opacity instead
+                        this.paperIdleBlend = 0;
+                        this.fortuneOffset.set(0, 0, baseDepth);
+                        const worldOffset = this.tempVector.copy(this.fortuneOffset).applyQuaternion(this.model.quaternion);
+                        this.fortunePaper.position.copy(this.model.position).add(worldOffset);
+                        this.fortunePaper.quaternion.copy(this.model.quaternion);
+                        this.fortunePaper.scale.set(1, 1, 1);
                         this.fortunePaper.traverse((child) => {
                             if (child.isMesh && child.material) {
                                 child.material.transparent = true;
@@ -2039,6 +2060,7 @@
                     } else {
                         // Animate paper sliding out and fading in
                         if (this.paperAnimationProgress < 1) {
+                            this.paperIdleBlend = 0;
                             this.paperAnimationProgress += deltaTime * 0.95; // Чуть быстрее для живости
                             const rawProgress = Math.min(this.paperAnimationProgress, 1);
                             const slideProgress = this.easeOutCubic(rawProgress);
@@ -2047,13 +2069,12 @@
                             const settleFactor = 1 - revealProgress;
 
                             // Paper slides to the right of cookie
-                            const targetOffset = 0.18; // Держим смещение рядом с печенькой
-                            this.fortunePaper.position.x = this.model.position.x + (slideProgress * targetOffset);
-                            this.fortunePaper.position.y = this.model.position.y + settleFactor * 0.015;
-                            this.fortunePaper.position.z = this.model.position.z - 0.035;
+                            this.fortuneOffset.set(slideProgress * targetOffsetX, 0, baseDepth);
+                            const worldOffset = this.tempVector.copy(this.fortuneOffset).applyQuaternion(this.model.quaternion);
+                            this.fortunePaper.position.copy(this.model.position).add(worldOffset);
+                            this.fortunePaper.quaternion.copy(this.model.quaternion);
 
                             // Add a gentle tilt that eases out
-                            this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
                             const initialTilt = -0.32;
                             const initialYaw = -0.14;
                             this.fortunePaper.rotation.z += initialTilt * settleFactor;
@@ -2076,22 +2097,22 @@
                             if (Math.floor(rawProgress * 5) > Math.floor((rawProgress - deltaTime * 0.95) * 5)) {
                                 console.log('📜 Paper sliding:', (rawProgress * 100).toFixed(0) + '%',
                                            'opacity:', fadeProgress.toFixed(2),
-                                           'offset:', (slideProgress * targetOffset).toFixed(3),
+                                           'offset:', (slideProgress * targetOffsetX).toFixed(3),
                                            'scale:', scaleValue.toFixed(2));
                             }
                         } else {
                             // After animation, keep paper next to cookie (уменьшен на 35%)
-                            const targetOffset = 0.23; // Держим смещение рядом с печенькой
-                            this.fortunePaper.position.x = this.model.position.x + targetOffset;
-                            this.fortunePaper.position.y = this.model.position.y + Math.sin(this.idleAnimationTime * 0.5) * 0.005;
-                            this.fortunePaper.position.z = this.model.position.z - 0.035;
-
-                            // Stable rotation
-                            this.fortunePaper.rotation.copy(this.fortunePaper.userData.initialRotation);
-                            this.fortunePaper.rotation.z += Math.sin(this.idleAnimationTime * 0.3) * 0.03;
+                            this.paperIdleBlend = Math.min(this.paperIdleBlend + deltaTime * 2.2, 1);
+                            const idleBlend = this.paperIdleBlend;
+                            const idleYOffset = Math.sin(this.idleAnimationTime * 0.5) * 0.005 * idleBlend;
+                            this.fortuneOffset.set(targetOffsetX, idleYOffset, baseDepth);
+                            const worldOffset = this.tempVector.copy(this.fortuneOffset).applyQuaternion(this.model.quaternion);
+                            this.fortunePaper.position.copy(this.model.position).add(worldOffset);
+                            this.fortunePaper.quaternion.copy(this.model.quaternion);
+                            this.fortunePaper.rotation.z += Math.sin(this.idleAnimationTime * 0.3) * 0.03 * idleBlend;
 
                             // Subtle breathing scale
-                            const idleScale = 1 + Math.sin(this.idleAnimationTime * 0.9) * 0.015;
+                            const idleScale = 1 + Math.sin(this.idleAnimationTime * 0.9) * 0.015 * idleBlend;
                             this.fortunePaper.scale.set(idleScale, idleScale, idleScale);
                             this.fortunePaper.traverse((child) => {
                                 if (child.isMesh && child.material) {
