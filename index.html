@@ -7,6 +7,7 @@
     <title>AR QR Viewer</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap');
 
         * {
             margin: 0;
@@ -265,13 +266,29 @@
             padding: 12px 24px;
             border-radius: 20px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-            font-size: 16px;
-            font-weight: 600;
-            color: #2d1c10;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
             animation: bounceHint 2s ease-in-out infinite;
             pointer-events: none;
             opacity: 0;
             transition: opacity 0.3s ease;
+        }
+
+        .hint-emoji {
+            font-size: 20px;
+        }
+
+        .hint-text {
+            font-family: 'Great Vibes', cursive;
+            font-size: 32px;
+            line-height: 1;
+            color: #2d1c10;
+            letter-spacing: 0.5px;
+        }
+
+        .hint-text .hint-first-letter {
+            color: #8b1a34;
         }
 
         #cookieHint.visible {
@@ -503,7 +520,7 @@
         <canvas id="scanCanvas"></canvas>
         <div id="info">Наведите камеру на QR-код</div>
         <div id="loading">Запуск камеры...</div>
-        <div id="cookieHint">👆 Открой меня!</div>
+        <div id="cookieHint"><span class="hint-emoji">👆</span><span class="hint-text"><span class="hint-first-letter">О</span>ткрой меня!</span></div>
         <div id="fortune" class="fortune-hidden">
             <div class="fortune-content">
                 <div class="fortune-text"></div>
@@ -2528,32 +2545,34 @@
 
                 // FORTUNE PAPER - static with gentle sway
                 if (this.fortunePaper && this.model && isCookieAnimated) {
-                    const sway = this.globalSway || { x: 0, y: 0, z: 0 };
                     this.fortunePaper.position.copy(this.model.position);
                     this.fortunePaper.position.z = this.model.position.z + this.animParams.paperPosZ;
 
-                    const baseQuat = this.camera.quaternion.clone();
+                    const alignedQuat = this.camera.quaternion.clone();
+                    const rotationEase = this.easeOutCubic(Math.min(this.cameraRotationProgress, 1));
+                    const dynamicPaperRotX = -90 * (1 - rotationEase);
                     const offsetEuler = new THREE.Euler(
-                        (this.animParams.paperRotX * Math.PI) / 180,
+                        ((this.animParams.paperRotX + dynamicPaperRotX) * Math.PI) / 180,
                         (this.animParams.paperRotY * Math.PI) / 180,
                         (this.animParams.paperRotZ * Math.PI) / 180,
                         'XYZ'
                     );
                     const offsetQuat = new THREE.Quaternion().setFromEuler(offsetEuler);
-                    const swayQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(sway.x, sway.y, sway.z));
-                    baseQuat.multiply(offsetQuat).multiply(swayQuat);
-                    this.fortunePaper.quaternion.copy(baseQuat);
+                    alignedQuat.multiply(offsetQuat);
+                    if (this.globalSway) {
+                        const swayQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.globalSway.x, this.globalSway.y, this.globalSway.z));
+                        alignedQuat.multiply(swayQuat);
+                    }
+                    this.fortunePaper.quaternion.copy(alignedQuat);
 
-                    const shouldShowPaper = this.cookieAnimState === 'opened' || this.cookieOpenProgress >= 0.2;
-                    if (shouldShowPaper) {
+                    if (this.cookieAnimState === 'opening' || this.cookieAnimState === 'opened') {
+                        const openEase = this.easeOutCubic(this.cookieOpenProgress);
+                        const currentScale = openEase * this.animParams.paperScale;
+                        const finalScale = this.cookieAnimState === 'opened'
+                            ? currentScale + Math.sin(this.idleAnimationTime * 0.8) * 0.01
+                            : currentScale;
+                        this.fortunePaper.scale.setScalar(Math.max(finalScale, 0.001));
                         this.fortunePaper.visible = true;
-                        this.fortunePaper.scale.setScalar(this.animParams.paperScale);
-                        this.fortunePaper.traverse((child) => {
-                            if (child.isMesh && child.material) {
-                                child.material.transparent = false;
-                                child.material.opacity = 1;
-                            }
-                        });
                     } else {
                         this.fortunePaper.visible = false;
                     }
