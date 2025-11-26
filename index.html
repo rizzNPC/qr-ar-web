@@ -359,115 +359,6 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
-        /* Animation Controls HUD */
-        #animControls {
-            position: absolute;
-            top: 80px;
-            right: 20px;
-            z-index: 15;
-            background: rgba(15, 15, 25, 0.85);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 16px;
-            max-width: 280px;
-            font-size: 12px;
-            color: #fff;
-            max-height: calc(100vh - 100px);
-            overflow-y: auto;
-        }
-
-        #animControls h3 {
-            margin: 0 0 12px 0;
-            font-size: 13px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: rgba(255, 255, 255, 0.9);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 8px;
-        }
-
-        .control-group {
-            margin-bottom: 14px;
-        }
-
-        .control-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.8);
-        }
-
-        .control-group input[type="range"] {
-            width: 100%;
-            height: 4px;
-            border-radius: 2px;
-            background: rgba(255, 255, 255, 0.1);
-            outline: none;
-            -webkit-appearance: none;
-        }
-
-        .control-group input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #9333ea, #3b82f6);
-            cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        .control-group input[type="range"]::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #9333ea, #3b82f6);
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        .control-value {
-            display: inline-block;
-            float: right;
-            font-size: 11px;
-            font-weight: 700;
-            color: #3b82f6;
-        }
-
-        .control-buttons {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .control-buttons button {
-            flex: 1;
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            color: #fff;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .control-buttons button:hover {
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        .control-buttons button:active {
-            transform: scale(0.95);
-        }
 
         /* Responsive adjustments */
         @media (max-width: 768px) {
@@ -503,12 +394,6 @@
                 font-size: 14px;
             }
 
-            #animControls {
-                top: 60px;
-                right: 12px;
-                max-width: 240px;
-                font-size: 11px;
-            }
         }
     </style>
 </head>
@@ -526,87 +411,6 @@
                 <div class="fortune-text"></div>
             </div>
         </div>
-
-        <!-- Animation Controls HUD -->
-        <div id="animControls">
-            <h3>🍪 Настройка крошек</h3>
-
-            <div class="control-group">
-                <label>
-                    Смещение по X
-                    <span class="control-value" id="crumbPosXValue">-0.01</span>
-                </label>
-                <input type="range" id="crumbPosX" min="-1" max="1" step="0.01" value="-0.01">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Смещение по Y
-                    <span class="control-value" id="crumbPosYValue">1.00</span>
-                </label>
-                <input type="range" id="crumbPosY" min="-1" max="1" step="0.01" value="1.0">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Глубина (начало)
-                    <span class="control-value" id="crumbPosZStartValue">0.23</span>
-                </label>
-                <input type="range" id="crumbPosZStart" min="-1" max="1" step="0.01" value="0.23">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Глубина (конец)
-                    <span class="control-value" id="crumbPosZEndValue">0.90</span>
-                </label>
-                <input type="range" id="crumbPosZEnd" min="-1" max="1" step="0.01" value="0.9">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Смещение по Z
-                    <span class="control-value" id="crumbDepthOffsetValue">0.11</span>
-                </label>
-                <input type="range" id="crumbDepthOffset" min="-1" max="1" step="0.01" value="0">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Поворот X (°)
-                    <span class="control-value" id="crumbRotXValue">-180</span>
-                </label>
-                <input type="range" id="crumbRotX" min="-180" max="180" step="1" value="-180">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Поворот Y (°)
-                    <span class="control-value" id="crumbRotYValue">66</span>
-                </label>
-                <input type="range" id="crumbRotY" min="-180" max="180" step="1" value="66">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Поворот Z (°)
-                    <span class="control-value" id="crumbRotZValue">140</span>
-                </label>
-                <input type="range" id="crumbRotZ" min="-180" max="180" step="1" value="140">
-            </div>
-
-            <div class="control-group">
-                <label>
-                    Размер крошки
-                    <span class="control-value" id="crumbScaleValue">1.00</span>
-                </label>
-                <input type="range" id="crumbScale" min="0.2" max="4" step="0.05" value="1">
-            </div>
-
-            <div class="control-buttons">
-                <button id="resetCrumbs">Сбросить крошки</button>
-            </div>
-        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -617,10 +421,9 @@
         import { DRACOLoader } from './vendor/three/DRACOLoader.js';
 
         const DEFAULT_STATUS_MESSAGE = 'Наведите камеру на QR-код';
-        const SCAN_SUCCESS_MESSAGE = 'Ваше предсказание готово, сломайте печеньку';
+        const SCAN_SUCCESS_MESSAGE = 'Ваше предсказание готово, разбейте печеньку';
 
         // QR Code to 3D Model mapping
-        const ENABLE_ANIM_CONTROLS = false;
         const COOKIE_MODEL_CONFIG = {
             type: 'cookie-animated',
             halfA: 'assets/models/01.glb',
@@ -905,10 +708,6 @@
 
                 // Cookie hint UI
                 this.cookieHintElement = document.getElementById('cookieHint');
-                this.animControlsElement = document.getElementById('animControls');
-                if (!ENABLE_ANIM_CONTROLS && this.animControlsElement) {
-                    this.animControlsElement.style.display = 'none';
-                }
                 this.globalSway = { x: 0, y: 0, z: 0 };
 
                 // Animation parameters (controllable via HUD)
@@ -948,9 +747,6 @@
                 this.setupQRWorker();
                 this.setupTouchControls();
                 this.setupClickHandler();
-                if (ENABLE_ANIM_CONTROLS) {
-                    this.setupAnimControls();
-                }
                 this.loading.textContent = 'Подготовка ресурсов...';
                 this.preloadModels();
                 this.startScanning();
@@ -1097,120 +893,6 @@
 
                 // Enable pointer events on canvas
                 canvas.style.pointerEvents = 'auto';
-            }
-
-            setupAnimControls() {
-                const crumbDefaults = {
-                    crumbPosX: -0.01,
-                    crumbPosY: 1.0,
-                    crumbPosZStart: 0.23,
-                    crumbPosZEnd: 0.9,
-                    crumbDepthOffset: 0.11,
-                    crumbRotX: -180,
-                    crumbRotY: 66,
-                    crumbRotZ: 140,
-                    crumbScale: 4
-                };
-
-                const crumbPosXSlider = document.getElementById('crumbPosX');
-                const crumbPosYSlider = document.getElementById('crumbPosY');
-                const crumbPosZStartSlider = document.getElementById('crumbPosZStart');
-                const crumbPosZEndSlider = document.getElementById('crumbPosZEnd');
-                const crumbDepthSlider = document.getElementById('crumbDepthOffset');
-                const crumbRotXSlider = document.getElementById('crumbRotX');
-                const crumbRotYSlider = document.getElementById('crumbRotY');
-                const crumbRotZSlider = document.getElementById('crumbRotZ');
-                const crumbScaleSlider = document.getElementById('crumbScale');
-                const resetButton = document.getElementById('resetCrumbs');
-
-                const crumbPosXValue = document.getElementById('crumbPosXValue');
-                const crumbPosYValue = document.getElementById('crumbPosYValue');
-                const crumbPosZStartValue = document.getElementById('crumbPosZStartValue');
-                const crumbPosZEndValue = document.getElementById('crumbPosZEndValue');
-                const crumbDepthValue = document.getElementById('crumbDepthOffsetValue');
-                const crumbRotXValue = document.getElementById('crumbRotXValue');
-                const crumbRotYValue = document.getElementById('crumbRotYValue');
-                const crumbRotZValue = document.getElementById('crumbRotZValue');
-                const crumbScaleValue = document.getElementById('crumbScaleValue');
-
-                if (!crumbPosXSlider || !crumbPosYSlider || !crumbPosZStartSlider || !crumbPosZEndSlider || !crumbRotXSlider || !crumbRotYSlider || !crumbRotZSlider || !crumbDepthSlider || !crumbScaleSlider) {
-                    console.warn('Crumb controls not found');
-                    return;
-                }
-
-                const getValue = (key) => {
-                    const value = this.animParams[key];
-                    return typeof value === 'number' ? value : crumbDefaults[key];
-                };
-
-                const updateVisibleCrumb = () => {
-                    if (this.cookieCrumbs.length > 0 && this.cookieCrumbs[0].visible) {
-                        this.applyCrumbTransform(this.cookieCrumbs[0]);
-                    }
-                };
-
-                const bindSlider = (slider, display, key, { isAngle = false, formatter, onChange } = {}) => {
-                    const initialValue = getValue(key);
-                    slider.value = initialValue;
-                    if (display) {
-                        if (formatter) {
-                            display.textContent = formatter(initialValue);
-                        } else {
-                            display.textContent = isAngle ? initialValue : initialValue.toFixed(2);
-                        }
-                    }
-                    slider.addEventListener('input', (event) => {
-                        const parsed = isAngle ? parseInt(event.target.value) : parseFloat(event.target.value);
-                        this.animParams[key] = parsed;
-                        if (display) {
-                            if (formatter) {
-                                display.textContent = formatter(parsed);
-                            } else {
-                                display.textContent = isAngle ? parsed : parsed.toFixed(2);
-                            }
-                        }
-                        if (typeof onChange === 'function') {
-                            onChange(parsed);
-                        }
-                        updateVisibleCrumb();
-                    });
-                };
-
-                bindSlider(crumbPosXSlider, crumbPosXValue, 'crumbPosX');
-                bindSlider(crumbPosYSlider, crumbPosYValue, 'crumbPosY');
-                bindSlider(crumbPosZStartSlider, crumbPosZStartValue, 'crumbPosZStart');
-                bindSlider(crumbPosZEndSlider, crumbPosZEndValue, 'crumbPosZEnd');
-                bindSlider(crumbDepthSlider, crumbDepthValue, 'crumbDepthOffset');
-                bindSlider(crumbRotXSlider, crumbRotXValue, 'crumbRotX', { isAngle: true });
-                bindSlider(crumbRotYSlider, crumbRotYValue, 'crumbRotY', { isAngle: true });
-                bindSlider(crumbRotZSlider, crumbRotZValue, 'crumbRotZ', { isAngle: true });
-                bindSlider(crumbScaleSlider, crumbScaleValue, 'crumbScale', {
-                    formatter: (v) => parseFloat(v).toFixed(3),
-                    onChange: () => this.updateCrumbScale()
-                });
-
-                const resetSlider = (slider, value) => {
-                    slider.value = value;
-                    slider.dispatchEvent(new Event('input'));
-                };
-
-                if (resetButton) {
-                    resetButton.addEventListener('click', () => {
-                        Object.assign(this.animParams, crumbDefaults);
-                        resetSlider(crumbPosXSlider, crumbDefaults.crumbPosX);
-                        resetSlider(crumbPosYSlider, crumbDefaults.crumbPosY);
-                        resetSlider(crumbPosZStartSlider, crumbDefaults.crumbPosZStart);
-                        resetSlider(crumbPosZEndSlider, crumbDefaults.crumbPosZEnd);
-                        resetSlider(crumbDepthSlider, crumbDefaults.crumbDepthOffset);
-                        resetSlider(crumbRotXSlider, crumbDefaults.crumbRotX);
-                        resetSlider(crumbRotYSlider, crumbDefaults.crumbRotY);
-                        resetSlider(crumbRotZSlider, crumbDefaults.crumbRotZ);
-                        resetSlider(crumbScaleSlider, crumbDefaults.crumbScale);
-                        console.log('🔄 Crumb parameters reset');
-                    });
-                }
-
-                console.log('🎛️ Crumb controls initialized');
             }
 
             setupClickHandler() {
@@ -1388,15 +1070,20 @@
                 );
                 const crumbQuat = new THREE.Quaternion().setFromEuler(crumbEuler);
                 crumb.quaternion.copy(this.model.quaternion).multiply(crumbQuat);
+
+                this.applyCrumbScaleToModel(crumb, scaleFactor);
             }
 
-            applyCrumbScaleToModel(crumb) {
+            applyCrumbScaleToModel(crumb, parentScaleFactor = null) {
                 if (!crumb) {
                     return;
                 }
                 const baseScale = crumb.userData?.baseScale || 1;
-                const scaleMultiplier = this.animParams.crumbScale || 0.01;
-                crumb.scale.setScalar(baseScale * scaleMultiplier);
+                const scaleMultiplier = this.animParams.crumbScale || 1;
+                const globalFactor = parentScaleFactor != null
+                    ? parentScaleFactor
+                    : ((this.model?.scale.x / (this.baseScale || 1)) || 1);
+                crumb.scale.setScalar(baseScale * scaleMultiplier * globalFactor);
             }
 
             updateCrumbScale() {
