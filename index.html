@@ -534,39 +534,39 @@
             <div class="control-group">
                 <label>
                     Смещение по X
-                    <span class="control-value" id="crumbPosXValue">-0.02</span>
+                    <span class="control-value" id="crumbPosXValue">-0.01</span>
                 </label>
-                <input type="range" id="crumbPosX" min="-1" max="1" step="0.01" value="-0.02">
+                <input type="range" id="crumbPosX" min="-1" max="1" step="0.01" value="-0.01">
             </div>
 
             <div class="control-group">
                 <label>
                     Смещение по Y
-                    <span class="control-value" id="crumbPosYValue">0.03</span>
+                    <span class="control-value" id="crumbPosYValue">1.00</span>
                 </label>
-                <input type="range" id="crumbPosY" min="-1" max="1" step="0.01" value="0.03">
+                <input type="range" id="crumbPosY" min="-1" max="1" step="0.01" value="1.0">
             </div>
 
             <div class="control-group">
                 <label>
                     Глубина (начало)
-                    <span class="control-value" id="crumbPosZStartValue">0.71</span>
+                    <span class="control-value" id="crumbPosZStartValue">0.23</span>
                 </label>
-                <input type="range" id="crumbPosZStart" min="-1" max="1" step="0.01" value="0.71">
+                <input type="range" id="crumbPosZStart" min="-1" max="1" step="0.01" value="0.23">
             </div>
 
             <div class="control-group">
                 <label>
                     Глубина (конец)
-                    <span class="control-value" id="crumbPosZEndValue">0.81</span>
+                    <span class="control-value" id="crumbPosZEndValue">0.90</span>
                 </label>
-                <input type="range" id="crumbPosZEnd" min="-1" max="1" step="0.01" value="0.81">
+                <input type="range" id="crumbPosZEnd" min="-1" max="1" step="0.01" value="0.9">
             </div>
 
             <div class="control-group">
                 <label>
                     Смещение по Z
-                    <span class="control-value" id="crumbDepthOffsetValue">0.00</span>
+                    <span class="control-value" id="crumbDepthOffsetValue">0.11</span>
                 </label>
                 <input type="range" id="crumbDepthOffset" min="-1" max="1" step="0.01" value="0">
             </div>
@@ -582,17 +582,17 @@
             <div class="control-group">
                 <label>
                     Поворот Y (°)
-                    <span class="control-value" id="crumbRotYValue">68</span>
+                    <span class="control-value" id="crumbRotYValue">66</span>
                 </label>
-                <input type="range" id="crumbRotY" min="-180" max="180" step="1" value="68">
+                <input type="range" id="crumbRotY" min="-180" max="180" step="1" value="66">
             </div>
 
             <div class="control-group">
                 <label>
                     Поворот Z (°)
-                    <span class="control-value" id="crumbRotZValue">39</span>
+                    <span class="control-value" id="crumbRotZValue">140</span>
                 </label>
-                <input type="range" id="crumbRotZ" min="-180" max="180" step="1" value="39">
+                <input type="range" id="crumbRotZ" min="-180" max="180" step="1" value="140">
             </div>
 
             <div class="control-group">
@@ -617,7 +617,7 @@
         import { DRACOLoader } from './vendor/three/DRACOLoader.js';
 
         const DEFAULT_STATUS_MESSAGE = 'Наведите камеру на QR-код';
-        const SCAN_SUCCESS_MESSAGE = 'Ваше предсказание готово, разбейте печеньку';
+        const SCAN_SUCCESS_MESSAGE = 'Ваше предсказание готово, сломайте печеньку';
 
         // QR Code to 3D Model mapping
         const ENABLE_ANIM_CONTROLS = false;
@@ -641,55 +641,55 @@
         // Fortune predictions for cookie
         const FORTUNE_PREDICTIONS = [
             'В 2026 году вы заметите дверь, которую раньше просто проходили мимо — и решитесь открыть её.',
-            // 'Один разговор может изменить траекторию вашего года. Держите уши открытыми.',
-            // 'Вы поймёте, что многие ограничения были только в голове — и начнёте их снимать.',
-            // 'Кто-то предложит вам сотрудничество, которое запустит цепочку событий.',
-            // 'Вам вернут идею, которую вы когда-то оставили — и она станет актуальной снова.',
-            // 'То, что вы считали «случайностью», на деле окажется стратегией.',
-            // 'У вас появится ощущение, что всё идёт в нужную сторону — даже если путь выглядит странно.',
-            // '2026 будет годом честного «да» и уверенного «нет».',
-            // 'Ваш опыт найдёт себе новое применение — не там, где вы ожидали.',
-            // 'Вы откроете больше, чем закрыли.',
-            // 'Вас услышат именно в тот момент, когда вы решите говорить спокойно.',
-            // 'Ваша смелость проявится не в прыжке, а в одном маленьком шаге.',
-            // 'Вы откроете не дверь, а целый коридор из возможностей.',
-            // 'Умение слушать станет вашим главным инструментом.',
-            // 'У вас появится ресурс, который раньше вы не могли найти.',
-            // 'В этом году вы почувствуете, что ваше время больше не нужно оправдывать.',
-            // 'Встретите человека, который поверит в ваш проект раньше вас.',
-            // 'Идеи будут возникать там, где вы позволяете себе не спешить.',
-            // 'Вы научитесь видеть порядок даже в хаосе.',
-            // 'Коллаборации превзойдут личные рекорды.',
-            // 'Вы убедитесь, что закрытая дверь — не всегда отказ. Иногда это «постучите иначе».',
-            // 'В 2026 вы начнёте не проект, а новую главу.',
-            // 'Ваше усилие перерастёт в результат неожиданно быстро.',
-            // 'Пауза окажется важнее действия.',
-            // 'Вас перестанут спрашивать «зачем?» и начнут спрашивать «как помочь?».',
-            // 'У вас появится шанс поработать с теми, кто видит дальше горизонта.',
-            // 'Вы узнаете цену идеи, когда кто-то её захочет реализовать вместе с вами.',
-            // 'Вы разглядите смысл там, где раньше видели только задачу.',
-            // 'Одна интуитивная мысль сэкономит месяцы работы.',
-            // 'Вы откроете ключ не к проекту — а к себе.',
-            // 'Ваш труд заметят не тогда, когда вы громко скажете — а когда просто будете делать.',
-            // 'Некоторые ответы придут в тишине. Создайте её хотя бы время от времени.',
-            // 'Вы увидите, как прошлое начинает работать на будущее.',
-            // 'В 2026 вы начнёте выбирать, а не ждать выбора других.',
-            // 'Новые связи окажутся ценнее старых инструментов.',
-            // 'Ошибки перестанут пугать — они начнут направлять.',
-            // 'Вы поймёте, что скорость не всегда важна. Гораздо важнее — направление.',
-            // 'Вы найдёте способ сделать сложное простым.',
-            // 'Кто-то заметит ваш стиль — и захочет работать именно с вами.',
-            // 'Вам предложат задачу, которая станет поворотной.',
-            // 'Вы постепенно перестанете объяснять. Вы начнёте показывать.',
-            // 'Ваши наблюдения станут дорожной картой для кого-то ещё.',
-            // 'В 2026 вы поймёте: комфорт — не цель, а стартовая площадка.',
-            // 'Вы обнаружите, что знали решение раньше, чем поняли вопрос.',
-            // 'Нужные люди придут не для оправдания, а для действия.',
-            // 'Там, где вы ожидали барьер, окажется окно.',
-            // 'Вы увидите сферу, в которой вам стоит стать заметнее.',
-            // 'Ваше «случилось» будет короче, чем ваш путь.',
-            // 'Вы перестанете откладывать и начнёте открывать.',
-            // 'Этот год не даст вам готовых дверей. Он даст вам ключи.'
+            'Один разговор может изменить траекторию вашего года. Держите уши открытыми.',
+            'Вы поймёте, что многие ограничения были только в голове — и начнёте их снимать.',
+            'Кто-то предложит вам сотрудничество, которое запустит цепочку событий.',
+            'Вам вернут идею, которую вы когда-то оставили — и она станет актуальной снова.',
+            'То, что вы считали «случайностью», на деле окажется стратегией.',
+            'У вас появится ощущение, что всё идёт в нужную сторону — даже если путь выглядит странно.',
+            '2026 будет годом честного «да» и уверенного «нет».',
+            'Ваш опыт найдёт себе новое применение — не там, где вы ожидали.',
+            'Вы откроете больше, чем закрыли.',
+            'Вас услышат именно в тот момент, когда вы решите говорить спокойно.',
+            'Ваша смелость проявится не в прыжке, а в одном маленьком шаге.',
+            'Вы откроете не дверь, а целый коридор из возможностей.',
+            'Умение слушать станет вашим главным инструментом.',
+            'У вас появится ресурс, который раньше вы не могли найти.',
+            'В этом году вы почувствуете, что ваше время больше не нужно оправдывать.',
+            'Встретите человека, который поверит в ваш проект раньше вас.',
+            'Идеи будут возникать там, где вы позволяете себе не спешить.',
+            'Вы научитесь видеть порядок даже в хаосе.',
+            'Коллаборации превзойдут личные рекорды.',
+            'Вы убедитесь, что закрытая дверь — не всегда отказ. Иногда это «постучите иначе».',
+            'В 2026 вы начнёте не проект, а новую главу.',
+            'Ваше усилие перерастёт в результат неожиданно быстро.',
+            'Пауза окажется важнее действия.',
+            'Вас перестанут спрашивать «зачем?» и начнут спрашивать «как помочь?».',
+            'У вас появится шанс поработать с теми, кто видит дальше горизонта.',
+            'Вы узнаете цену идеи, когда кто-то её захочет реализовать вместе с вами.',
+            'Вы разглядите смысл там, где раньше видели только задачу.',
+            'Одна интуитивная мысль сэкономит месяцы работы.',
+            'Вы откроете ключ не к проекту — а к себе.',
+            'Ваш труд заметят не тогда, когда вы громко скажете — а когда просто будете делать.',
+            'Некоторые ответы придут в тишине. Создайте её хотя бы время от времени.',
+            'Вы увидите, как прошлое начинает работать на будущее.',
+            'В 2026 вы начнёте выбирать, а не ждать выбора других.',
+            'Новые связи окажутся ценнее старых инструментов.',
+            'Ошибки перестанут пугать — они начнут направлять.',
+            'Вы поймёте, что скорость не всегда важна. Гораздо важнее — направление.',
+            'Вы найдёте способ сделать сложное простым.',
+            'Кто-то заметит ваш стиль — и захочет работать именно с вами.',
+            'Вам предложат задачу, которая станет поворотной.',
+            'Вы постепенно перестанете объяснять. Вы начнёте показывать.',
+            'Ваши наблюдения станут дорожной картой для кого-то ещё.',
+            'В 2026 вы поймёте: комфорт — не цель, а стартовая площадка.',
+            'Вы обнаружите, что знали решение раньше, чем поняли вопрос.',
+            'Нужные люди придут не для оправдания, а для действия.',
+            'Там, где вы ожидали барьер, окажется окно.',
+            'Вы увидите сферу, в которой вам стоит стать заметнее.',
+            'Ваше «случилось» будет короче, чем ваш путь.',
+            'Вы перестанете откладывать и начнёте открывать.',
+            'Этот год не даст вам готовых дверей. Он даст вам ключи.'
         ];
 
         function normalizeQRData(rawData) {
@@ -1062,19 +1062,12 @@
                     }
 
                     if (touches.length === 2 && lastTouches.length === 2) {
-                        const modelType = this.model && this.model.userData && this.model.userData.modelType;
-                        const isCookie = modelType === 'cookie-animated';
-                        if (!isCookie) {
-                            // Pinch zoom
-                            const dx = touches[0].clientX - touches[1].clientX;
-                            const dy = touches[0].clientY - touches[1].clientY;
-                            const currentDistance = Math.sqrt(dx * dx + dy * dy);
-                            const scale = currentDistance / this.touchState.startDistance;
-                            this.userScale = this.touchState.startScale * scale;
-                            this.userScale = Math.max(0.3, Math.min(3, this.userScale)); // Clamp between 0.3x and 3x
-                        } else {
-                            this.userScale = 0.5; // Блокируем pinch-скейл для печеньки
-                        }
+                        const dx = touches[0].clientX - touches[1].clientX;
+                        const dy = touches[0].clientY - touches[1].clientY;
+                        const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                        const scale = currentDistance / this.touchState.startDistance;
+                        this.userScale = this.touchState.startScale * scale;
+                        this.userScale = Math.max(0.2, Math.min(4, this.userScale));
                     } else if (touches.length === 1 && lastTouches.length === 1) {
                         // Pan rotation
                         const deltaX = touches[0].clientX - lastTouches[0].clientX;
@@ -1378,10 +1371,11 @@
                 const openProgress = Math.min(Math.max(this.cookieOpenProgress || 0, 0), 1);
                 const depthOffset = this.animParams.crumbDepthOffset || 0;
                 const crumbZ = THREE.MathUtils.lerp(crumbZStart, crumbZEnd, openProgress) + depthOffset;
+                const scaleFactor = (this.model.scale.x / (this.baseScale || 1)) || 1;
                 const localOffset = new THREE.Vector3(
-                    this.animParams.crumbPosX || 0,
-                    this.animParams.crumbPosY || 0,
-                    crumbZ
+                    (this.animParams.crumbPosX || 0) * scaleFactor,
+                    (this.animParams.crumbPosY || 0) * scaleFactor,
+                    crumbZ * scaleFactor
                 );
                 const worldPosition = localOffset.clone();
                 this.model.localToWorld(worldPosition);
@@ -2358,11 +2352,7 @@
                     // Smooth scale animation for appearance
                     this.currentScale += (this.targetScale - this.currentScale) * this.scaleLerpFactor;
                     // Apply animation scale as multiplier to base scale and user scale
-                    let finalScale = this.baseScale * this.currentScale * this.userScale;
-                    if (isCookieAnimated) {
-                        finalScale = this.baseScale * this.currentScale;
-                        this.userScale = 1;
-                    }
+                    const globalScale = this.baseScale * this.currentScale * this.userScale;
 
                     // NEW Cookie-animated animations
                     if (isCookieAnimated) {
@@ -2488,7 +2478,8 @@
                         this.model.rotation.z = this.userRotation.z;
                     }
 
-                    this.model.scale.setScalar(finalScale);
+                    this.model.scale.setScalar(globalScale);
+                    const scaleFactor = globalScale / this.baseScale;
 
                     // Apply fade-out animation
                     if (this.isFadingOut) {
@@ -2546,7 +2537,8 @@
                 // FORTUNE PAPER - static with gentle sway
                 if (this.fortunePaper && this.model && isCookieAnimated) {
                     this.fortunePaper.position.copy(this.model.position);
-                    this.fortunePaper.position.z = this.model.position.z + this.animParams.paperPosZ;
+                const scaleFactor = (this.model.scale.x / (this.baseScale || 1)) || 1;
+                this.fortunePaper.position.z = this.model.position.z + this.animParams.paperPosZ * scaleFactor;
 
                     const alignedQuat = this.camera.quaternion.clone();
                     const rotationEase = this.easeOutCubic(Math.min(this.cameraRotationProgress, 1));
@@ -2567,10 +2559,10 @@
 
                     if (this.cookieAnimState === 'opening' || this.cookieAnimState === 'opened') {
                         const openEase = this.easeOutCubic(this.cookieOpenProgress);
-                        const currentScale = openEase * this.animParams.paperScale;
+                        const baseScale = openEase * this.animParams.paperScale * scaleFactor;
                         const finalScale = this.cookieAnimState === 'opened'
-                            ? currentScale + Math.sin(this.idleAnimationTime * 0.8) * 0.01
-                            : currentScale;
+                            ? baseScale + Math.sin(this.idleAnimationTime * 0.8) * 0.01
+                            : baseScale;
                         this.fortunePaper.scale.setScalar(Math.max(finalScale, 0.001));
                         this.fortunePaper.visible = true;
                     } else {
